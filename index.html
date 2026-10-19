@@ -217,28 +217,6 @@
   .stat dd { margin: 0; font-size: .88rem; font-variant-numeric: tabular-nums; }
   .stat dd small { color: var(--muted); }
 
-  /* ---------- account / sync ---------- */
-  .account { display: flex; flex-direction: column; gap: 6px; align-items: center; }
-  .who {
-    display: flex; align-items: center; gap: 10px; width: 100%;
-    background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 8px 10px 8px 14px;
-  }
-  .who .info { flex: 1; min-width: 0; }
-  .who .name { font-weight: 600; font-size: .9rem; }
-  .who .sub { font-size: .78rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; }
-  .dot.ok { background: var(--add); }
-  .dot.busy { background: var(--accent); }
-  .dot.bad { background: var(--sub); }
-  .ghost.small { padding: 6px 12px; font-size: .82rem; }
-  .gbtn {
-    display: inline-flex; align-items: center; gap: 10px;
-    background: #fff; color: #1f1f1f; border: 1px solid #dadce0; border-radius: 999px;
-    padding: 9px 18px; font-size: .9rem; font-weight: 500; cursor: pointer;
-  }
-  .gbtn:hover { background: #f7f8f8; }
-  .note.err { color: var(--sub); text-align: center; }
-
   .toast {
     position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%);
     background: var(--text); color: var(--bg); border-radius: 12px; padding: 10px 14px;
@@ -253,22 +231,6 @@
 <body>
 <main>
   <h1>Studying Timer</h1>
-
-  <div class="account hidden" id="account">
-    <div class="who hidden" id="who">
-      <span class="dot" id="syncDot"></span>
-      <div class="info">
-        <div class="name" id="userName"></div>
-        <div class="sub"><span id="userEmail"></span> · <span id="syncStatus"></span></div>
-      </div>
-      <button class="ghost small" id="signOutBtn">Sign out</button>
-    </div>
-    <button class="gbtn hidden" id="signInBtn">
-      <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="m6.3 14.7 6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-7.9l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg>
-      Sign in with Google to sync across devices
-    </button>
-    <p class="note err hidden" id="authError"></p>
-  </div>
 
   <div class="timers" id="timerList"></div>
   <button class="newbtn" id="newBtn">+ New timer</button>
@@ -420,31 +382,8 @@
       }
     } catch {}
   };
-  // ----- change tracking (for syncing between devices) -----
-  // Each timer carries `updatedAt`. Rather than remembering to bump it in every action,
-  // save() compares each timer (and which list it's in) with the last saved snapshot.
-  const LISTS = ['timers', 'trash', 'archive'];
-  let snap = new Map();
-  const snapKey = (list, t) => { const { updatedAt, ...rest } = t; return list + JSON.stringify(rest); };
-  const stamp = (bump = true) => {
-    const now = Date.now(), next = new Map();
-    LISTS.forEach(list => state[list].forEach(t => {
-      const key = snapKey(list, t);
-      if (bump && snap.get(t.id) !== key) t.updatedAt = now;
-      else if (t.updatedAt === undefined) t.updatedAt = 0;
-      next.set(t.id, key);
-    }));
-    snap = next;
-  };
-
-  const saveListeners = [];
-  const writeLocal = () => {
-    try { localStorage.setItem(STORE, JSON.stringify(state)); } catch {}
-  };
   const save = () => {
-    stamp();
-    writeLocal();
-    saveListeners.forEach(fn => fn());
+    try { localStorage.setItem(STORE, JSON.stringify(state)); } catch {}
   };
 
   const sel = () => state.timers.find(t => t.id === state.selected) || null;
@@ -858,7 +797,7 @@
   const rename = () => {
     const t = sel(); if (!t) return;
     const name = $('faceName').value.trim();
-    if (name && name !== t.name) { t.name = name; delete t.auto; commit(); }
+    if (name && name !== t.name) { t.name = name; commit(); }
     else $('faceName').value = t.name;
   };
   $('faceName').addEventListener('change', rename);
@@ -907,62 +846,14 @@
     if (++ticks % 5 === 0 && state.timers.some(t => t.running)) renderStats();
   };
 
-  // ----- sync API (used by sync.js) -----
-  // A timer that was auto-created on an empty device and never touched; dropped when
-  // cloud data arrives so every new device doesn't add its own "Timer 1".
-  const isUntouchedDefault = t => t.auto && !t.runs && !t.adds && !t.subs && t.initial === null && !t.running;
-
-  // Merge another copy of the data into ours: for each timer id, the most recently
-  // updated version wins (including which list it's in: active / deleted / archived).
-  const merge = remote => {
-    const pick = new Map(), order = [];
-    const take = (s, isRemote) => LISTS.forEach(list => (s[list] || []).forEach(t => {
-      if (!isRemote && remoteHasData && list === 'timers' && isUntouchedDefault(t)) return;
-      const cur = pick.get(t.id);
-      if (!cur) order.push(t.id);
-      if (!cur || (t.updatedAt || 0) > (cur.t.updatedAt || 0)) pick.set(t.id, { t, list });
-    }));
-    const remoteHasData = LISTS.some(l => (remote[l] || []).length);
-    take(remote, true);
-    take(state, false);
-    const merged = { timers: [], trash: [], archive: [] };
-    order.forEach(id => { const { t, list } = pick.get(id); merged[list].push(JSON.parse(JSON.stringify(t))); });
-    return merged;
-  };
-
-  window.timerApp = {
-    // the parts of state that sync (selection and input mode stay per-device)
-    getData: () => JSON.parse(JSON.stringify({ timers: state.timers, trash: state.trash, archive: state.archive })),
-    onSave: fn => saveListeners.push(fn),
-    // Apply data from the cloud. Returns the merged data so the caller can push it back if needed.
-    applyRemote: remote => {
-      const merged = merge(remote);
-      LISTS.forEach(l => { state[l] = merged[l]; });
-      if (!state.timers.length) {
-        const t = makeTimer('Timer 1', 'down');
-        t.auto = true;
-        state.timers.push(t);
-      }
-      if (!sel()) state.selected = state.timers[0].id;
-      stamp(false);  // these versions came from the merge; don't re-date them
-      writeLocal();
-      buildList(); render(); renderTrash(); renderStats();
-      checkFinished();
-      stopAlarmIfQuiet();
-      return window.timerApp.getData();
-    },
-  };
-
   load();
-  if (!state.timers.length) { createTimer('Timer 1', 'down'); state.timers[0].auto = true; }
+  if (!state.timers.length) createTimer('Timer 1', 'down');
   if (!sel()) state.selected = state.timers[0].id;
-  stamp(false);
   checkFinished();
   renderMode();
   commit();
   setInterval(tick, 200);
 })();
 </script>
-<script type="module" src="sync.js"></script>
 </body>
 </html>
