@@ -10,11 +10,13 @@ A timer that works like a normal clock-app timer, plus:
 - **Two ways to enter time:**
   - **Exact:** hours, minutes, seconds (e.g. `1 hr 13 min 28 sec`)
   - **Decimal:** e.g. `1.11` hours is converted to `1 hr 6 min 36 sec` (minutes and seconds work too)
-- Quick buttons (−10m, −5m, −1m, +1m, +5m, +10m, +30m, +1h)
+- Matching quick buttons: −1h −30m −10m −5m −1m and +1h +30m +10m +5m +1m
+- **Recently deleted:** deleting a timer shows an Undo button, and deleted timers can be restored for 30 days
+- **Stats for every timer**, including deleted ones: when it was created and deleted, initial time, time remaining
+  (or current total for a stopwatch), time spent running, and times used (runs + adds + subtracts)
 - Alarm sound and a browser notification when a countdown finishes
 - Shows the clock time a countdown will end at
 - Every timer keeps running correctly across page refreshes
-- History of every change, labelled by timer name
 
 ## Use it
 

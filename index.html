@@ -177,16 +177,46 @@
   .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   .ghost { border: 1px solid var(--line); background: none; color: var(--text); border-radius: 10px; padding: 12px 8px; font-size: .95rem; cursor: pointer; }
 
-  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chips { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
   .chips button {
     border: 1px solid var(--line); background: var(--bg); color: var(--text);
-    border-radius: 999px; padding: 6px 12px; font-size: .85rem; cursor: pointer;
+    border-radius: 999px; padding: 6px 4px; font-size: .85rem; cursor: pointer;
     font-variant-numeric: tabular-nums;
   }
   .chips button.minus { color: var(--sub); }
   .chips button.plus { color: var(--add); }
 
-  #log { list-style: none; margin: 0; padding: 0; font-size: .85rem; color: var(--muted); display: flex; flex-direction: column; gap: 4px; max-height: 160px; overflow-y: auto; }
+  /* ---------- recently deleted ---------- */
+  .trash { display: flex; flex-direction: column; gap: 8px; }
+  .trash-row { display: flex; align-items: center; gap: 10px; font-size: .9rem; }
+  .trash-row .info { flex: 1; min-width: 0; }
+  .trash-row .name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .trash-row .sub { font-size: .78rem; color: var(--muted); }
+  .trash-row button { border: 1px solid var(--line); background: none; color: var(--text); border-radius: 8px; padding: 6px 10px; font-size: .82rem; cursor: pointer; flex: none; }
+  .trash-row button.restore { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .note { font-size: .78rem; color: var(--muted); margin: 0; }
+
+  /* ---------- stats ---------- */
+  .stats-total { font-size: .9rem; color: var(--muted); margin: 0; }
+  .stats-total b { color: var(--text); font-variant-numeric: tabular-nums; }
+  .stat { border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; }
+  .stat-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+  .stat-head .name { font-weight: 600; }
+  .badge { font-size: .72rem; padding: 2px 8px; border-radius: 999px; background: var(--bg); color: var(--muted); }
+  .badge.active { background: color-mix(in srgb, var(--add) 16%, transparent); color: var(--add); }
+  .badge.deleted { background: color-mix(in srgb, var(--sub) 14%, transparent); color: var(--sub); }
+  .stat dl { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px 14px; margin: 0; }
+  .stat dt { font-size: .72rem; color: var(--muted); }
+  .stat dd { margin: 0; font-size: .88rem; font-variant-numeric: tabular-nums; }
+  .stat dd small { color: var(--muted); }
+
+  .toast {
+    position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%);
+    background: var(--text); color: var(--bg); border-radius: 12px; padding: 10px 14px;
+    display: flex; gap: 14px; align-items: center; font-size: .9rem; max-width: calc(100% - 32px);
+    box-shadow: 0 6px 20px rgba(0,0,0,.25);
+  }
+  .toast button { background: none; border: none; color: var(--accent); font-weight: 700; cursor: pointer; font-size: .9rem; }
   .hint { font-size: .78rem; color: var(--muted); text-align: center; }
   .empty { text-align: center; color: var(--muted); padding: 40px 0; }
 </style>
@@ -268,13 +298,21 @@
     <div class="chips" id="chips"></div>
   </section>
 
+  <section class="card hidden" id="trashCard">
+    <h2>Recently deleted</h2>
+    <div class="trash" id="trashList"></div>
+    <p class="note">Deleted timers can be restored for 30 days. Their stats stay below either way.</p>
+  </section>
+
   <section class="card">
-    <h2>History</h2>
-    <ul id="log"><li>Nothing yet.</li></ul>
+    <h2>Stats</h2>
+    <p class="stats-total" id="statsTotal"></p>
+    <div id="statsList" style="display:flex;flex-direction:column;gap:10px"></div>
   </section>
 
   <p class="hint">Space = start/pause selected · Enter = set · timers keep running in the background and survive refresh</p>
 </main>
+<div class="toast hidden" id="toast"><span id="toastText"></span><button id="toastUndo">Undo</button></div>
 
 <script>
 (() => {
@@ -286,16 +324,40 @@
   // Each timer stores `base` (ms) and, while running, `since` (timestamp it was started).
   //   countdown: remaining = base - (now - since)
   //   stopwatch: elapsed   = base + (now - since)
-  let state = { timers: [], selected: null, mode: 'exact', log: [] };
+  // timers  = active timers
+  // trash   = deleted timers that can still be restored (for TRASH_DAYS)
+  // archive = timers deleted for good; kept only so their stats still show
+  let state = { timers: [], trash: [], archive: [], selected: null, mode: 'exact' };
   let newType = 'down';
+  const TRASH_DAYS = 30;
 
   const uid = () => Math.random().toString(36).slice(2, 10);
-  const makeTimer = (name, type) => ({ id: uid(), name, type, base: 0, since: 0, running: false, total: 0, done: false });
+  const STAT_DEFAULTS = { createdAt: null, deletedAt: null, initial: null, runs: 0, adds: 0, subs: 0, spent: 0, runStart: 0 };
+  const makeTimer = (name, type) => ({
+    id: uid(), name, type, base: 0, since: 0, running: false, total: 0, done: false,
+    ...STAT_DEFAULTS, createdAt: Date.now(),
+  });
 
   const load = () => {
     try {
       const saved = JSON.parse(localStorage.getItem(STORE));
-      if (saved) { Object.assign(state, saved); return; }
+      if (saved) {
+        Object.assign(state, saved);
+        delete state.log;
+        state.trash = state.trash || [];
+        state.archive = state.archive || [];
+        // timers from before stats existed: fill in what we can
+        [...state.timers, ...state.trash, ...state.archive].forEach(t => {
+          for (const k in STAT_DEFAULTS) if (t[k] === undefined) t[k] = STAT_DEFAULTS[k];
+          if (t.initial === null && t.type === 'down' && t.total) t.initial = t.total;
+          if (t.running && !t.runStart) t.runStart = t.since;
+        });
+        // move expired trash into the archive
+        const cutoff = Date.now() - TRASH_DAYS * 86400000;
+        state.archive.push(...state.trash.filter(t => t.deletedAt < cutoff));
+        state.trash = state.trash.filter(t => t.deletedAt >= cutoff);
+        return;
+      }
       // migrate the single timer from v1
       const old = JSON.parse(localStorage.getItem(OLD_STORE));
       if (old) {
@@ -305,9 +367,11 @@
         if (old.running) { t.running = true; t.since = Date.now(); t.base = Math.max(0, old.endAt - Date.now()); }
         else t.base = old.remaining || 0;
         state.timers = [t];
+        if (t.running) t.runStart = t.since;
+        t.createdAt = null;
+        t.initial = t.total || null;
         state.selected = t.id;
         state.mode = old.mode || 'exact';
-        state.log = old.log || [];
       }
     } catch {}
   };
@@ -360,10 +424,14 @@
   };
 
   // ----- actions -----
-  const addLog = (t, text) => {
-    const now = new Date().toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' });
-    state.log.unshift(`${now} — ${t ? t.name + ': ' : ''}${text}`);
-    state.log = state.log.slice(0, 50);
+  // Time actually spent running, including the current run.
+  const spentMs = t => t.spent + (t.running ? Date.now() - t.runStart : 0);
+  // Close out the current run: add it to time spent and freeze the value.
+  const stopRun = (t, endAt = Date.now()) => {
+    if (!t.running) return;
+    t.spent += Math.max(0, endAt - t.runStart);
+    rebase(t);
+    t.running = false;
   };
 
   const createTimer = (name, type) => {
@@ -371,17 +439,47 @@
     const t = makeTimer(name, type);
     state.timers.push(t);
     state.selected = t.id;
-    addLog(t, `created (${type === 'down' ? 'countdown' : 'stopwatch'})`);
     commit();
   };
 
+  let toastTimer = null, lastDeleted = null;
+  const showToast = text => {
+    $('toastText').textContent = text;
+    $('toast').classList.remove('hidden');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => $('toast').classList.add('hidden'), 7000);
+  };
+
   const deleteTimer = t => {
-    if (!confirm(`Delete "${t.name}"?`)) return;
+    stopRun(t);
+    t.done = false;
+    t.deletedAt = Date.now();
     const i = state.timers.indexOf(t);
     state.timers.splice(i, 1);
+    state.trash.unshift(t);
     state.selected = (state.timers[i] || state.timers[i - 1] || {}).id || null;
-    addLog(null, `Deleted "${t.name}"`);
+    lastDeleted = t.id;
+    showToast(`Deleted "${t.name}"`);
     stopAlarmIfQuiet();
+    commit();
+  };
+
+  const restoreTimer = id => {
+    const t = state.trash.find(x => x.id === id);
+    if (!t) return;
+    state.trash = state.trash.filter(x => x !== t);
+    t.deletedAt = null;
+    state.timers.push(t);
+    state.selected = t.id;
+    $('toast').classList.add('hidden');
+    commit();
+  };
+
+  const deleteForever = id => {
+    const t = state.trash.find(x => x.id === id);
+    if (!t || !confirm(`Permanently delete "${t.name}"? It can't be restored, but its stats will stay.`)) return;
+    state.trash = state.trash.filter(x => x !== t);
+    state.archive.unshift(t);
     commit();
   };
 
@@ -389,8 +487,8 @@
     t.done = false;
     t.base = sec * 1000;
     t.total = sec * 1000;
+    if (t.initial === null) t.initial = sec * 1000;
     if (t.running) t.since = Date.now();
-    addLog(t, `set to ${fmtWords(sec)}`);
     stopAlarmIfQuiet();
     commit();
   };
@@ -401,11 +499,11 @@
     const before = t.base;
     const after = Math.max(0, before + sec * 1000);
     t.base = after;
+    if (sec > 0) t.adds++; else t.subs++;
     if (t.type === 'down') {
       t.total = Math.max(after, t.total + (after - before), 1);
       if (after > 0) t.done = false;
     }
-    addLog(t, `${sec > 0 ? '+' : '−'} ${fmtWords(Math.abs(sec))}${after === 0 && sec < 0 ? ' (hit zero)' : ''}`);
     if (t.type === 'down' && after === 0 && t.running) finish(t);
     stopAlarmIfQuiet();
     commit();
@@ -415,35 +513,35 @@
     if (t.running) return;
     if (t.type === 'down' && t.base <= 0) return;
     unlockAudio();
-    t.since = Date.now();
+    t.since = t.runStart = Date.now();
     t.running = true;
     t.done = false;
+    t.runs++;
     commit();
   };
 
   const pause = t => {
     if (!t.running) return;
-    rebase(t);
-    t.running = false;
+    stopRun(t);
     commit();
   };
 
   const toggle = t => { t.running ? pause(t) : start(t); stopAlarmIfQuiet(); };
 
   const reset = t => {
-    t.running = false;
+    stopRun(t);
     t.base = t.type === 'down' ? t.total : 0;
     t.done = false;
-    addLog(t, 'reset');
     stopAlarmIfQuiet();
     commit();
   };
 
   const finish = t => {
-    t.running = false;
+    // The countdown actually hit zero at since + base, which may be earlier than now
+    // (e.g. the tab was closed), so only count time up to that moment as spent.
+    stopRun(t, Math.min(Date.now(), t.since + t.base));
     t.base = 0;
     t.done = true;
-    addLog(t, 'time’s up!');
     save();
     startAlarm();
     if ('Notification' in window && Notification.permission === 'granted') {
@@ -570,10 +668,51 @@
       : 'Studying Timer';
   };
 
-  const renderLog = () => {
-    $('log').innerHTML = state.log.length
-      ? state.log.map(l => `<li>${esc(l)}</li>`).join('')
-      : '<li>Nothing yet.</li>';
+  const fmtDate = ts => ts
+    ? new Date(ts).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+    : '—';
+  const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+
+  const renderTrash = () => {
+    $('trashCard').classList.toggle('hidden', !state.trash.length);
+    $('trashList').innerHTML = state.trash.map(t => `
+      <div class="trash-row" data-id="${t.id}">
+        <div class="info">
+          <div class="name">${esc(t.name)}</div>
+          <div class="sub">${t.type === 'down' ? 'Countdown' : 'Stopwatch'} · ${fmtClock(t.base, t.type)} · deleted ${fmtDate(t.deletedAt)}</div>
+        </div>
+        <button class="forever">Delete forever</button>
+        <button class="restore">Restore</button>
+      </div>`).join('');
+  };
+
+  const renderStats = () => {
+    const all = [
+      ...state.timers.map(t => [t, 'active', 'Active']),
+      ...state.trash.map(t => [t, 'deleted', 'Recently deleted']),
+      ...state.archive.map(t => [t, 'deleted', 'Deleted for good']),
+    ];
+    const totalSpent = all.reduce((sum, [t]) => sum + spentMs(t), 0);
+    $('statsTotal').innerHTML = `Total time spent across all timers: <b>${fmtWords(totalSpent / 1000)}</b>`;
+    $('statsList').innerHTML = all.map(([t, cls, label]) => {
+      const used = t.runs + t.adds + t.subs;
+      return `
+      <div class="stat">
+        <div class="stat-head">
+          <span class="name">${esc(t.name)}</span>
+          <span class="badge">${t.type === 'down' ? 'Countdown' : 'Stopwatch'}</span>
+          <span class="badge ${cls}">${label}</span>
+        </div>
+        <dl>
+          <div><dt>Created</dt><dd>${t.createdAt ? fmtDate(t.createdAt) : 'Unknown'}</dd></div>
+          <div><dt>Deleted</dt><dd>${fmtDate(t.deletedAt)}</dd></div>
+          <div><dt>Initial time</dt><dd>${t.initial !== null ? fmtWords(t.initial / 1000) : !t.createdAt ? 'Unknown' : (t.type === 'up' ? '0 sec' : 'Not set')}</dd></div>
+          <div><dt>${t.type === 'down' ? 'Time remaining' : 'Current total'}</dt><dd>${fmtWords(Math.floor(valueMs(t) / 1000))}</dd></div>
+          <div><dt>Time spent running</dt><dd>${fmtWords(Math.floor(spentMs(t) / 1000))}</dd></div>
+          <div><dt>Times used</dt><dd>${used}<br><small>${plural(t.runs, 'run')} · ${t.adds} added · ${t.subs} subtracted</small></dd></div>
+        </dl>
+      </div>`;
+    }).join('') || '<p class="note">No timers yet.</p>';
   };
 
   const renderPreview = () => {
@@ -595,10 +734,11 @@
   };
 
   const render = () => { renderList(); renderSelected(); };
-  const commit = () => { save(); buildList(); render(); renderLog(); };
+  const commit = () => { save(); buildList(); render(); renderTrash(); renderStats(); };
 
-  // ----- quick chips -----
-  [[-600, '−10m'], [-300, '−5m'], [-60, '−1m'], [60, '+1m'], [300, '+5m'], [600, '+10m'], [1800, '+30m'], [3600, '+1h']]
+  // ----- quick chips: minus row on top, matching plus row underneath -----
+  const CHIP_STEPS = [[3600, '1h'], [1800, '30m'], [600, '10m'], [300, '5m'], [60, '1m']];
+  [...CHIP_STEPS.map(([s, l]) => [-s, '−' + l]), ...CHIP_STEPS.map(([s, l]) => [s, '+' + l])]
     .forEach(([sec, label]) => {
       const b = document.createElement('button');
       b.textContent = label;
@@ -616,6 +756,14 @@
     state.selected = t.id;
     save(); render();
   });
+
+  $('trashList').addEventListener('click', e => {
+    const row = e.target.closest('.trash-row');
+    if (!row) return;
+    if (e.target.closest('.restore')) restoreTimer(row.dataset.id);
+    if (e.target.closest('.forever')) deleteForever(row.dataset.id);
+  });
+  $('toastUndo').onclick = () => restoreTimer(lastDeleted);
 
   const openNew = show => {
     $('newCard').classList.toggle('hidden', !show);
@@ -637,7 +785,7 @@
   const rename = () => {
     const t = sel(); if (!t) return;
     const name = $('faceName').value.trim();
-    if (name && name !== t.name) { addLog(t, `renamed to "${name}"`); t.name = name; commit(); }
+    if (name && name !== t.name) { t.name = name; commit(); }
     else $('faceName').value = t.name;
   };
   $('faceName').addEventListener('change', rename);
@@ -678,7 +826,13 @@
     });
     return changed;
   };
-  const tick = () => { if (checkFinished()) commit(); else render(); };
+  let ticks = 0;
+  const tick = () => {
+    if (checkFinished()) return commit();
+    render();
+    // live stats (time spent / remaining) once a second, only while something runs
+    if (++ticks % 5 === 0 && state.timers.some(t => t.running)) renderStats();
+  };
 
   load();
   if (!state.timers.length) createTimer('Timer 1', 'down');
