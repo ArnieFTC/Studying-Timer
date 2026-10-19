@@ -1,0 +1,461 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Studying Timer</title>
+<style>
+  :root {
+    --bg: #f6f5f2;
+    --card: #ffffff;
+    --text: #1d1d1f;
+    --muted: #6e6e73;
+    --line: #e3e1dc;
+    --accent: #ff8a00;
+    --accent-soft: #fff1e0;
+    --add: #1f9d55;
+    --sub: #d64545;
+    --ring-track: #ebe8e2;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #111113;
+      --card: #1c1c1f;
+      --text: #f2f2f4;
+      --muted: #9a9aa2;
+      --line: #2e2e33;
+      --accent: #ff9f2e;
+      --accent-soft: #33240f;
+      --add: #3ccf7c;
+      --sub: #ff6b6b;
+      --ring-track: #2a2a2f;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    padding: 24px 16px 48px;
+  }
+  main { width: 100%; max-width: 520px; display: flex; flex-direction: column; gap: 20px; }
+  h1 { font-size: 1.1rem; font-weight: 600; margin: 0; color: var(--muted); text-align: center; letter-spacing: .02em; }
+
+  /* ---------- clock face ---------- */
+  .face { position: relative; width: min(340px, 86vw); aspect-ratio: 1; margin: 0 auto; }
+  .face svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+  .face circle { fill: none; stroke-width: 10; }
+  .track { stroke: var(--ring-track); }
+  .progress { stroke: var(--accent); stroke-linecap: round; transition: stroke-dashoffset .25s linear; }
+  .readout {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+  }
+  #display {
+    font-variant-numeric: tabular-nums;
+    font-size: clamp(2.2rem, 11vw, 3.6rem);
+    font-weight: 300;
+    letter-spacing: -.02em;
+  }
+  #display.long { font-size: clamp(1.8rem, 9vw, 2.8rem); }
+  #status { font-size: .9rem; color: var(--muted); }
+  #endsAt { font-size: .85rem; color: var(--muted); min-height: 1.2em; }
+  .face.done .progress { stroke: var(--sub); }
+  .face.done #display { color: var(--sub); animation: blink 1s steps(2) infinite; }
+  @keyframes blink { 50% { opacity: .35; } }
+
+  /* ---------- controls ---------- */
+  .controls { display: flex; justify-content: center; gap: 28px; }
+  .round {
+    width: 84px; height: 84px; border-radius: 50%;
+    border: none; font-size: 1rem; font-weight: 600; cursor: pointer;
+    transition: transform .08s, filter .15s;
+  }
+  .round:active { transform: scale(.96); }
+  .round:disabled { opacity: .4; cursor: default; }
+  #resetBtn { background: var(--line); color: var(--text); }
+  #startBtn { background: var(--accent-soft); color: var(--accent); }
+  #startBtn.running { background: color-mix(in srgb, var(--sub) 18%, transparent); color: var(--sub); }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    padding: 18px;
+    display: flex; flex-direction: column; gap: 14px;
+  }
+  .card h2 { margin: 0; font-size: .95rem; font-weight: 600; }
+
+  .seg { display: flex; background: var(--bg); border-radius: 10px; padding: 3px; }
+  .seg button {
+    flex: 1; border: none; background: none; color: var(--muted);
+    padding: 8px; border-radius: 8px; font-size: .9rem; cursor: pointer; font-weight: 500;
+  }
+  .seg button.on { background: var(--card); color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+
+  .fields { display: flex; gap: 10px; }
+  .field { flex: 1; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+  .field label { font-size: .75rem; color: var(--muted); }
+  input, select {
+    width: 100%;
+    font-size: 1.25rem;
+    padding: 10px 12px;
+    border-radius: 10px;
+    border: 1px solid var(--line);
+    background: var(--bg);
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+    min-width: 0;
+  }
+  select { font-size: 1rem; }
+  input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  .hidden { display: none !important; }
+
+  #preview { font-size: .85rem; color: var(--muted); min-height: 1.2em; }
+  #preview.err { color: var(--sub); }
+
+  .actions { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+  .actions button {
+    border: none; border-radius: 10px; padding: 12px 8px;
+    font-size: .95rem; font-weight: 600; cursor: pointer;
+  }
+  #setBtn { background: var(--accent); color: #fff; }
+  #addBtn { background: color-mix(in srgb, var(--add) 16%, transparent); color: var(--add); }
+  #subBtn { background: color-mix(in srgb, var(--sub) 16%, transparent); color: var(--sub); }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chips button {
+    border: 1px solid var(--line); background: var(--bg); color: var(--text);
+    border-radius: 999px; padding: 6px 12px; font-size: .85rem; cursor: pointer;
+    font-variant-numeric: tabular-nums;
+  }
+  .chips button.minus { color: var(--sub); }
+  .chips button.plus { color: var(--add); }
+
+  #log { list-style: none; margin: 0; padding: 0; font-size: .85rem; color: var(--muted); display: flex; flex-direction: column; gap: 4px; max-height: 140px; overflow-y: auto; }
+  #log li span { font-variant-numeric: tabular-nums; }
+  .hint { font-size: .78rem; color: var(--muted); text-align: center; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Studying Timer</h1>
+
+  <div class="face" id="face">
+    <svg viewBox="0 0 120 120" aria-hidden="true">
+      <circle class="track" cx="60" cy="60" r="54"></circle>
+      <circle class="progress" id="ring" cx="60" cy="60" r="54"></circle>
+    </svg>
+    <div class="readout">
+      <div id="display">00:00:00</div>
+      <div id="status">Set a time to begin</div>
+      <div id="endsAt"></div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <button class="round" id="resetBtn">Reset</button>
+    <button class="round" id="startBtn">Start</button>
+  </div>
+
+  <section class="card">
+    <h2>Enter a time</h2>
+    <div class="seg" role="tablist">
+      <button id="modeExact" class="on">Exact (h · m · s)</button>
+      <button id="modeDecimal">Decimal</button>
+    </div>
+
+    <div class="fields" id="exactFields">
+      <div class="field"><label for="inH">Hours</label><input id="inH" type="number" min="0" step="1" inputmode="numeric" placeholder="0"></div>
+      <div class="field"><label for="inM">Minutes</label><input id="inM" type="number" min="0" step="1" inputmode="numeric" placeholder="0"></div>
+      <div class="field"><label for="inS">Seconds</label><input id="inS" type="number" min="0" step="1" inputmode="numeric" placeholder="0"></div>
+    </div>
+
+    <div class="fields hidden" id="decimalFields">
+      <div class="field" style="flex:2"><label for="inDec">Amount</label><input id="inDec" type="number" min="0" step="any" inputmode="decimal" placeholder="1.11"></div>
+      <div class="field"><label for="inUnit">Unit</label>
+        <select id="inUnit">
+          <option value="3600">hours</option>
+          <option value="60">minutes</option>
+          <option value="1">seconds</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="preview"></div>
+
+    <div class="actions">
+      <button id="setBtn">Set</button>
+      <button id="addBtn">+ Add</button>
+      <button id="subBtn">− Subtract</button>
+    </div>
+
+    <div class="chips" id="chips"></div>
+  </section>
+
+  <section class="card">
+    <h2>History</h2>
+    <ul id="log"><li>Nothing yet.</li></ul>
+  </section>
+
+  <p class="hint">Space = start/pause · Enter = set · works while running · survives page refresh</p>
+</main>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const STORE = 'studying-timer-v1';
+
+  // ----- state -----
+  // When running, endAt (ms timestamp) is the source of truth; when paused, remaining (ms) is.
+  let state = { running: false, endAt: 0, remaining: 0, total: 0, done: false, mode: 'exact', log: [] };
+
+  const load = () => {
+    try { Object.assign(state, JSON.parse(localStorage.getItem(STORE)) || {}); } catch {}
+  };
+  const save = () => {
+    try { localStorage.setItem(STORE, JSON.stringify(state)); } catch {}
+  };
+
+  // ----- time helpers -----
+  const remainingMs = () => state.running ? Math.max(0, state.endAt - Date.now()) : state.remaining;
+
+  const fmtClock = ms => {
+    const t = Math.ceil(ms / 1000);
+    const h = Math.floor(t / 3600), m = Math.floor(t % 3600 / 60), s = t % 60;
+    const pad = n => String(n).padStart(2, '0');
+    return `${pad(h)}:${pad(m)}:${pad(s)}`;
+  };
+
+  const fmtWords = sec => {
+    sec = Math.round(sec);
+    const h = Math.floor(sec / 3600), m = Math.floor(sec % 3600 / 60), s = sec % 60;
+    const parts = [];
+    if (h) parts.push(`${h} hr`);
+    if (m) parts.push(`${m} min`);
+    if (s || !parts.length) parts.push(`${s} sec`);
+    return parts.join(' ');
+  };
+
+  // Reads the entry fields and returns whole seconds, or null if empty/invalid.
+  const readEntry = () => {
+    if (state.mode === 'exact') {
+      const vals = ['inH', 'inM', 'inS'].map(id => $(id).value.trim());
+      if (vals.every(v => v === '')) return null;
+      const [h, m, s] = vals.map(v => v === '' ? 0 : Number(v));
+      if ([h, m, s].some(n => !isFinite(n) || n < 0)) return NaN;
+      return Math.round(h * 3600 + m * 60 + s);
+    }
+    const v = $('inDec').value.trim();
+    if (v === '') return null;
+    const n = Number(v);
+    if (!isFinite(n) || n < 0) return NaN;
+    return Math.round(n * Number($('inUnit').value));
+  };
+
+  // ----- actions -----
+  const addLog = text => {
+    const now = new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    state.log.unshift(`${now} — ${text}`);
+    state.log = state.log.slice(0, 30);
+  };
+
+  const setTimer = sec => {
+    state.done = false;
+    state.total = sec * 1000;
+    if (state.running) state.endAt = Date.now() + sec * 1000;
+    else state.remaining = sec * 1000;
+    addLog(`Set to ${fmtWords(sec)}`);
+    commit();
+  };
+
+  const adjust = sec => {
+    if (!sec) return;
+    const before = remainingMs();
+    let after = Math.max(0, before + sec * 1000);
+    const applied = after - before;
+    state.total = Math.max(after, state.total + applied, 1);
+    if (state.running) state.endAt = Date.now() + after;
+    else state.remaining = after;
+    if (after > 0) state.done = false;
+    addLog(`${sec > 0 ? '+' : '−'} ${fmtWords(Math.abs(sec))}${after === 0 && sec < 0 ? ' (hit zero)' : ''}`);
+    if (after === 0 && state.running) finish();
+    commit();
+  };
+
+  const start = () => {
+    if (state.running || state.remaining <= 0) return;
+    unlockAudio();
+    state.endAt = Date.now() + state.remaining;
+    state.running = true;
+    state.done = false;
+    commit();
+  };
+
+  const pause = () => {
+    if (!state.running) return;
+    state.remaining = remainingMs();
+    state.running = false;
+    commit();
+  };
+
+  const reset = () => {
+    state.running = false;
+    state.remaining = state.total;
+    state.done = false;
+    stopAlarm();
+    commit();
+  };
+
+  const finish = () => {
+    state.running = false;
+    state.remaining = 0;
+    state.done = true;
+    addLog('Time’s up!');
+    save();
+    startAlarm();
+    if ('Notification' in window && Notification.permission === 'granted') {
+      try { new Notification('Studying Timer', { body: 'Time’s up!' }); } catch {}
+    }
+  };
+
+  // ----- alarm (Web Audio, no files needed) -----
+  let audioCtx = null, alarmTimer = null;
+  const unlockAudio = () => {
+    try {
+      audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+    } catch {}
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission().catch(() => {});
+    }
+  };
+  const beep = () => {
+    if (!audioCtx) return;
+    const t = audioCtx.currentTime;
+    [0, 0.18, 0.36].forEach(off => {
+      const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+      o.type = 'sine'; o.frequency.value = 880;
+      g.gain.setValueAtTime(0.0001, t + off);
+      g.gain.exponentialRampToValueAtTime(0.3, t + off + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + off + 0.15);
+      o.connect(g).connect(audioCtx.destination);
+      o.start(t + off); o.stop(t + off + 0.16);
+    });
+  };
+  const startAlarm = () => {
+    stopAlarm();
+    beep();
+    let n = 0;
+    alarmTimer = setInterval(() => { beep(); if (++n >= 20) stopAlarm(); }, 1200);
+  };
+  const stopAlarm = () => { clearInterval(alarmTimer); alarmTimer = null; };
+
+  // ----- rendering -----
+  const ring = $('ring');
+  const CIRC = 2 * Math.PI * 54;
+  ring.style.strokeDasharray = CIRC;
+
+  const render = () => {
+    const ms = remainingMs();
+    const text = fmtClock(ms);
+    $('display').textContent = text;
+    $('display').classList.toggle('long', text.length > 8);
+    const frac = state.total > 0 ? Math.min(1, ms / state.total) : 0;
+    ring.style.strokeDashoffset = CIRC * (1 - frac);
+    $('face').classList.toggle('done', state.done);
+
+    $('status').textContent = state.done ? 'Time’s up!'
+      : state.running ? 'Running'
+      : ms > 0 ? 'Paused'
+      : 'Set a time to begin';
+
+    $('endsAt').textContent = state.running
+      ? 'Ends at ' + new Date(state.endAt).toLocaleString([], { weekday: ms > 86400000 ? 'short' : undefined, hour: 'numeric', minute: '2-digit' })
+      : '';
+
+    const sb = $('startBtn');
+    sb.textContent = state.running ? 'Pause' : (state.remaining < state.total && state.remaining > 0 ? 'Resume' : 'Start');
+    sb.classList.toggle('running', state.running);
+    sb.disabled = !state.running && ms <= 0;
+
+    document.title = state.running ? `${text} · Studying Timer` : state.done ? '⏰ Time’s up!' : 'Studying Timer';
+  };
+
+  const renderLog = () => {
+    $('log').innerHTML = state.log.length
+      ? state.log.map(l => `<li>${l.replace(/[<>&]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c]))}</li>`).join('')
+      : '<li>Nothing yet.</li>';
+  };
+
+  const renderPreview = () => {
+    const sec = readEntry();
+    const p = $('preview');
+    p.classList.toggle('err', Number.isNaN(sec));
+    if (sec === null) p.textContent = '';
+    else if (Number.isNaN(sec)) p.textContent = 'Enter a non-negative number';
+    else p.textContent = `= ${fmtWords(sec)}`;
+  };
+
+  const renderMode = () => {
+    const exact = state.mode === 'exact';
+    $('modeExact').classList.toggle('on', exact);
+    $('modeDecimal').classList.toggle('on', !exact);
+    $('exactFields').classList.toggle('hidden', !exact);
+    $('decimalFields').classList.toggle('hidden', exact);
+    renderPreview();
+  };
+
+  const commit = () => { save(); render(); renderLog(); };
+
+  // ----- quick chips -----
+  [[-600, '−10m'], [-300, '−5m'], [-60, '−1m'], [60, '+1m'], [300, '+5m'], [600, '+10m'], [1800, '+30m'], [3600, '+1h']]
+    .forEach(([sec, label]) => {
+      const b = document.createElement('button');
+      b.textContent = label;
+      b.className = sec < 0 ? 'minus' : 'plus';
+      b.onclick = () => adjust(sec);
+      $('chips').appendChild(b);
+    });
+
+  // ----- wiring -----
+  const withEntry = fn => () => {
+    const sec = readEntry();
+    if (sec === null || Number.isNaN(sec)) { renderPreview(); $('preview').classList.add('err'); if (sec === null) $('preview').textContent = 'Enter a time first'; return; }
+    fn(sec);
+  };
+
+  $('setBtn').onclick = withEntry(sec => { stopAlarm(); setTimer(sec); });
+  $('addBtn').onclick = withEntry(sec => { stopAlarm(); adjust(sec); });
+  $('subBtn').onclick = withEntry(sec => adjust(-sec));
+  $('startBtn').onclick = () => { stopAlarm(); state.running ? pause() : start(); };
+  $('resetBtn').onclick = reset;
+  $('modeExact').onclick = () => { state.mode = 'exact'; save(); renderMode(); };
+  $('modeDecimal').onclick = () => { state.mode = 'decimal'; save(); renderMode(); };
+  ['inH', 'inM', 'inS', 'inDec', 'inUnit'].forEach(id => $(id).addEventListener('input', renderPreview));
+
+  document.addEventListener('keydown', e => {
+    const typing = e.target.matches('input, select');
+    if (e.code === 'Space' && !typing) { e.preventDefault(); $('startBtn').click(); }
+    if (e.key === 'Enter' && typing) { e.preventDefault(); $('setBtn').click(); }
+  });
+
+  // ----- tick -----
+  const tick = () => {
+    if (state.running && Date.now() >= state.endAt) { finish(); renderLog(); }
+    render();
+  };
+
+  load();
+  if (state.running && Date.now() >= state.endAt) { finish(); }
+  renderMode();
+  commit();
+  setInterval(tick, 200);
+})();
+</script>
+</body>
+</html>
