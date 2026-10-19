@@ -13,6 +13,8 @@
     --line: #e3e1dc;
     --accent: #ff8a00;
     --accent-soft: #fff1e0;
+    --up: #2f7fe0;
+    --up-soft: #e4effc;
     --add: #1f9d55;
     --sub: #d64545;
     --ring-track: #ebe8e2;
@@ -26,6 +28,8 @@
       --line: #2e2e33;
       --accent: #ff9f2e;
       --accent-soft: #33240f;
+      --up: #5aa2ff;
+      --up-soft: #15243a;
       --add: #3ccf7c;
       --sub: #ff6b6b;
       --ring-track: #2a2a2f;
@@ -42,44 +46,86 @@
     justify-content: center;
     padding: 24px 16px 48px;
   }
-  main { width: 100%; max-width: 520px; display: flex; flex-direction: column; gap: 20px; }
+  main { width: 100%; max-width: 560px; display: flex; flex-direction: column; gap: 20px; }
   h1 { font-size: 1.1rem; font-weight: 600; margin: 0; color: var(--muted); text-align: center; letter-spacing: .02em; }
+  button { font-family: inherit; }
+
+  /* ---------- timer list ---------- */
+  .timers { display: flex; flex-direction: column; gap: 8px; }
+  .trow {
+    display: flex; align-items: center; gap: 12px;
+    background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+    padding: 10px 10px 10px 14px; cursor: pointer;
+  }
+  .trow.sel { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+  .trow.up.sel { border-color: var(--up); box-shadow: 0 0 0 1px var(--up); }
+  .trow .info { flex: 1; min-width: 0; }
+  .trow .name { font-weight: 600; font-size: .95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .trow .sub { font-size: .78rem; color: var(--muted); }
+  .trow .time { font-variant-numeric: tabular-nums; font-size: 1.25rem; font-weight: 400; }
+  .trow.done .time { color: var(--sub); animation: blink 1s steps(2) infinite; }
+  .trow .go {
+    width: 38px; height: 38px; border-radius: 50%; border: none; cursor: pointer;
+    background: var(--accent-soft); color: var(--accent); font-size: .95rem; flex: none;
+  }
+  .trow.up .go { background: var(--up-soft); color: var(--up); }
+  .trow .go.running { background: color-mix(in srgb, var(--sub) 18%, transparent); color: var(--sub); }
+  .trow .go:disabled { opacity: .35; cursor: default; }
+  .newbtn {
+    border: 1.5px dashed var(--line); background: none; color: var(--muted);
+    border-radius: 14px; padding: 12px; font-size: .95rem; cursor: pointer; font-weight: 500;
+  }
+  .newbtn:hover { color: var(--text); border-color: var(--muted); }
 
   /* ---------- clock face ---------- */
-  .face { position: relative; width: min(340px, 86vw); aspect-ratio: 1; margin: 0 auto; }
+  .face { position: relative; width: min(320px, 82vw); aspect-ratio: 1; margin: 0 auto; }
   .face svg { width: 100%; height: 100%; transform: rotate(-90deg); }
   .face circle { fill: none; stroke-width: 10; }
   .track { stroke: var(--ring-track); }
   .progress { stroke: var(--accent); stroke-linecap: round; transition: stroke-dashoffset .25s linear; }
+  .face.up .progress { stroke: var(--up); }
   .readout {
-    position: absolute; inset: 0;
+    position: absolute; inset: 12%;
     display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+    text-align: center;
   }
+  #faceName {
+    font-size: 1rem; font-weight: 600; max-width: 100%;
+    background: none; border: 1px solid transparent; border-radius: 8px;
+    color: var(--text); text-align: center; padding: 2px 6px; width: 100%;
+  }
+  #faceName:hover { border-color: var(--line); }
   #display {
     font-variant-numeric: tabular-nums;
-    font-size: clamp(2.2rem, 11vw, 3.6rem);
+    font-size: clamp(2rem, 10vw, 3.3rem);
     font-weight: 300;
     letter-spacing: -.02em;
   }
-  #display.long { font-size: clamp(1.8rem, 9vw, 2.8rem); }
-  #status { font-size: .9rem; color: var(--muted); }
-  #endsAt { font-size: .85rem; color: var(--muted); min-height: 1.2em; }
+  #display.long { font-size: clamp(1.7rem, 8.5vw, 2.6rem); }
+  #status { font-size: .88rem; color: var(--muted); }
+  #endsAt { font-size: .82rem; color: var(--muted); min-height: 1.2em; }
   .face.done .progress { stroke: var(--sub); }
   .face.done #display { color: var(--sub); animation: blink 1s steps(2) infinite; }
   @keyframes blink { 50% { opacity: .35; } }
 
   /* ---------- controls ---------- */
-  .controls { display: flex; justify-content: center; gap: 28px; }
+  .controls { display: flex; justify-content: center; gap: 28px; align-items: center; }
   .round {
     width: 84px; height: 84px; border-radius: 50%;
     border: none; font-size: 1rem; font-weight: 600; cursor: pointer;
-    transition: transform .08s, filter .15s;
+    transition: transform .08s;
   }
   .round:active { transform: scale(.96); }
   .round:disabled { opacity: .4; cursor: default; }
   #resetBtn { background: var(--line); color: var(--text); }
   #startBtn { background: var(--accent-soft); color: var(--accent); }
-  #startBtn.running { background: color-mix(in srgb, var(--sub) 18%, transparent); color: var(--sub); }
+  .face.up ~ .controls #startBtn { background: var(--up-soft); color: var(--up); }
+  #startBtn.running, .face.up ~ .controls #startBtn.running { background: color-mix(in srgb, var(--sub) 18%, transparent); color: var(--sub); }
+  #deleteBtn {
+    background: none; border: none; color: var(--muted); font-size: .85rem; cursor: pointer;
+    text-decoration: underline; text-underline-offset: 3px;
+  }
+  #deleteBtn:hover { color: var(--sub); }
 
   .card {
     background: var(--card);
@@ -89,6 +135,7 @@
     display: flex; flex-direction: column; gap: 14px;
   }
   .card h2 { margin: 0; font-size: .95rem; font-weight: 600; }
+  .card h2 small { font-weight: 400; color: var(--muted); }
 
   .seg { display: flex; background: var(--bg); border-radius: 10px; padding: 3px; }
   .seg button {
@@ -110,8 +157,9 @@
     color: var(--text);
     font-variant-numeric: tabular-nums;
     min-width: 0;
+    font-family: inherit;
   }
-  select { font-size: 1rem; }
+  select, #newName { font-size: 1rem; }
   input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
   .hidden { display: none !important; }
 
@@ -119,13 +167,15 @@
   #preview.err { color: var(--sub); }
 
   .actions { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
-  .actions button {
+  .actions button, .primary {
     border: none; border-radius: 10px; padding: 12px 8px;
     font-size: .95rem; font-weight: 600; cursor: pointer;
   }
-  #setBtn { background: var(--accent); color: #fff; }
+  #setBtn, .primary { background: var(--accent); color: #fff; }
   #addBtn { background: color-mix(in srgb, var(--add) 16%, transparent); color: var(--add); }
   #subBtn { background: color-mix(in srgb, var(--sub) 16%, transparent); color: var(--sub); }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .ghost { border: 1px solid var(--line); background: none; color: var(--text); border-radius: 10px; padding: 12px 8px; font-size: .95rem; cursor: pointer; }
 
   .chips { display: flex; flex-wrap: wrap; gap: 8px; }
   .chips button {
@@ -136,35 +186,56 @@
   .chips button.minus { color: var(--sub); }
   .chips button.plus { color: var(--add); }
 
-  #log { list-style: none; margin: 0; padding: 0; font-size: .85rem; color: var(--muted); display: flex; flex-direction: column; gap: 4px; max-height: 140px; overflow-y: auto; }
-  #log li span { font-variant-numeric: tabular-nums; }
+  #log { list-style: none; margin: 0; padding: 0; font-size: .85rem; color: var(--muted); display: flex; flex-direction: column; gap: 4px; max-height: 160px; overflow-y: auto; }
   .hint { font-size: .78rem; color: var(--muted); text-align: center; }
+  .empty { text-align: center; color: var(--muted); padding: 40px 0; }
 </style>
 </head>
 <body>
 <main>
   <h1>Studying Timer</h1>
 
-  <div class="face" id="face">
-    <svg viewBox="0 0 120 120" aria-hidden="true">
-      <circle class="track" cx="60" cy="60" r="54"></circle>
-      <circle class="progress" id="ring" cx="60" cy="60" r="54"></circle>
-    </svg>
-    <div class="readout">
-      <div id="display">00:00:00</div>
-      <div id="status">Set a time to begin</div>
-      <div id="endsAt"></div>
+  <div class="timers" id="timerList"></div>
+  <button class="newbtn" id="newBtn">+ New timer</button>
+
+  <section class="card hidden" id="newCard">
+    <h2>New timer</h2>
+    <div class="field"><label for="newName">Name</label><input id="newName" maxlength="60" placeholder="e.g. Biology this week"></div>
+    <div class="seg">
+      <button id="newDown" class="on">Countdown</button>
+      <button id="newUp">Stopwatch (counts up)</button>
     </div>
-  </div>
+    <div class="row2">
+      <button class="ghost" id="newCancel">Cancel</button>
+      <button class="primary" id="newCreate">Create</button>
+    </div>
+  </section>
 
-  <div class="controls">
-    <button class="round" id="resetBtn">Reset</button>
-    <button class="round" id="startBtn">Start</button>
-  </div>
+  <div id="selectedView">
+    <div class="face" id="face">
+      <svg viewBox="0 0 120 120" aria-hidden="true">
+        <circle class="track" cx="60" cy="60" r="54"></circle>
+        <circle class="progress" id="ring" cx="60" cy="60" r="54"></circle>
+      </svg>
+      <div class="readout">
+        <input id="faceName" maxlength="60" aria-label="Timer name" title="Click to rename">
+        <div id="display">00:00:00</div>
+        <div id="status"></div>
+        <div id="endsAt"></div>
+      </div>
+    </div>
 
-  <section class="card">
-    <h2>Enter a time</h2>
-    <div class="seg" role="tablist">
+    <div class="controls">
+      <button class="round" id="resetBtn">Reset</button>
+      <button class="round" id="startBtn">Start</button>
+    </div>
+    <p style="text-align:center;margin:12px 0 0"><button id="deleteBtn">Delete this timer</button></p>
+  </div>
+  <div class="empty hidden" id="emptyView">No timers yet — make one above.</div>
+
+  <section class="card" id="entryCard">
+    <h2>Change time <small id="entryFor"></small></h2>
+    <div class="seg">
       <button id="modeExact" class="on">Exact (h · m · s)</button>
       <button id="modeDecimal">Decimal</button>
     </div>
@@ -202,30 +273,61 @@
     <ul id="log"><li>Nothing yet.</li></ul>
   </section>
 
-  <p class="hint">Space = start/pause · Enter = set · works while running · survives page refresh</p>
+  <p class="hint">Space = start/pause selected · Enter = set · timers keep running in the background and survive refresh</p>
 </main>
 
 <script>
 (() => {
   const $ = id => document.getElementById(id);
-  const STORE = 'studying-timer-v1';
+  const STORE = 'studying-timer-v2';
+  const OLD_STORE = 'studying-timer-v1';
 
   // ----- state -----
-  // When running, endAt (ms timestamp) is the source of truth; when paused, remaining (ms) is.
-  let state = { running: false, endAt: 0, remaining: 0, total: 0, done: false, mode: 'exact', log: [] };
+  // Each timer stores `base` (ms) and, while running, `since` (timestamp it was started).
+  //   countdown: remaining = base - (now - since)
+  //   stopwatch: elapsed   = base + (now - since)
+  let state = { timers: [], selected: null, mode: 'exact', log: [] };
+  let newType = 'down';
+
+  const uid = () => Math.random().toString(36).slice(2, 10);
+  const makeTimer = (name, type) => ({ id: uid(), name, type, base: 0, since: 0, running: false, total: 0, done: false });
 
   const load = () => {
-    try { Object.assign(state, JSON.parse(localStorage.getItem(STORE)) || {}); } catch {}
+    try {
+      const saved = JSON.parse(localStorage.getItem(STORE));
+      if (saved) { Object.assign(state, saved); return; }
+      // migrate the single timer from v1
+      const old = JSON.parse(localStorage.getItem(OLD_STORE));
+      if (old) {
+        const t = makeTimer('Timer 1', 'down');
+        t.total = old.total || 0;
+        t.done = !!old.done;
+        if (old.running) { t.running = true; t.since = Date.now(); t.base = Math.max(0, old.endAt - Date.now()); }
+        else t.base = old.remaining || 0;
+        state.timers = [t];
+        state.selected = t.id;
+        state.mode = old.mode || 'exact';
+        state.log = old.log || [];
+      }
+    } catch {}
   };
   const save = () => {
     try { localStorage.setItem(STORE, JSON.stringify(state)); } catch {}
   };
 
-  // ----- time helpers -----
-  const remainingMs = () => state.running ? Math.max(0, state.endAt - Date.now()) : state.remaining;
+  const sel = () => state.timers.find(t => t.id === state.selected) || null;
 
-  const fmtClock = ms => {
-    const t = Math.ceil(ms / 1000);
+  // ----- time helpers -----
+  const valueMs = t => {
+    if (!t.running) return t.base;
+    const d = Date.now() - t.since;
+    return t.type === 'down' ? Math.max(0, t.base - d) : t.base + d;
+  };
+  // Freeze the running value into base, restarting the clock from now.
+  const rebase = t => { t.base = valueMs(t); if (t.running) t.since = Date.now(); };
+
+  const fmtClock = (ms, type) => {
+    const t = type === 'down' ? Math.ceil(ms / 1000) : Math.floor(ms / 1000);
     const h = Math.floor(t / 3600), m = Math.floor(t % 3600 / 60), s = t % 60;
     const pad = n => String(n).padStart(2, '0');
     return `${pad(h)}:${pad(m)}:${pad(s)}`;
@@ -241,7 +343,7 @@
     return parts.join(' ');
   };
 
-  // Reads the entry fields and returns whole seconds, or null if empty/invalid.
+  // Reads the entry fields and returns whole seconds, null if empty, NaN if invalid.
   const readEntry = () => {
     if (state.mode === 'exact') {
       const vals = ['inH', 'inM', 'inS'].map(id => $(id).value.trim());
@@ -258,68 +360,94 @@
   };
 
   // ----- actions -----
-  const addLog = text => {
-    const now = new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-    state.log.unshift(`${now} — ${text}`);
-    state.log = state.log.slice(0, 30);
+  const addLog = (t, text) => {
+    const now = new Date().toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' });
+    state.log.unshift(`${now} — ${t ? t.name + ': ' : ''}${text}`);
+    state.log = state.log.slice(0, 50);
   };
 
-  const setTimer = sec => {
-    state.done = false;
-    state.total = sec * 1000;
-    if (state.running) state.endAt = Date.now() + sec * 1000;
-    else state.remaining = sec * 1000;
-    addLog(`Set to ${fmtWords(sec)}`);
+  const createTimer = (name, type) => {
+    name = name.trim() || `${type === 'down' ? 'Timer' : 'Stopwatch'} ${state.timers.length + 1}`;
+    const t = makeTimer(name, type);
+    state.timers.push(t);
+    state.selected = t.id;
+    addLog(t, `created (${type === 'down' ? 'countdown' : 'stopwatch'})`);
     commit();
   };
 
-  const adjust = sec => {
+  const deleteTimer = t => {
+    if (!confirm(`Delete "${t.name}"?`)) return;
+    const i = state.timers.indexOf(t);
+    state.timers.splice(i, 1);
+    state.selected = (state.timers[i] || state.timers[i - 1] || {}).id || null;
+    addLog(null, `Deleted "${t.name}"`);
+    stopAlarmIfQuiet();
+    commit();
+  };
+
+  const setTime = (t, sec) => {
+    t.done = false;
+    t.base = sec * 1000;
+    t.total = sec * 1000;
+    if (t.running) t.since = Date.now();
+    addLog(t, `set to ${fmtWords(sec)}`);
+    stopAlarmIfQuiet();
+    commit();
+  };
+
+  const adjust = (t, sec) => {
     if (!sec) return;
-    const before = remainingMs();
-    let after = Math.max(0, before + sec * 1000);
-    const applied = after - before;
-    state.total = Math.max(after, state.total + applied, 1);
-    if (state.running) state.endAt = Date.now() + after;
-    else state.remaining = after;
-    if (after > 0) state.done = false;
-    addLog(`${sec > 0 ? '+' : '−'} ${fmtWords(Math.abs(sec))}${after === 0 && sec < 0 ? ' (hit zero)' : ''}`);
-    if (after === 0 && state.running) finish();
+    rebase(t);
+    const before = t.base;
+    const after = Math.max(0, before + sec * 1000);
+    t.base = after;
+    if (t.type === 'down') {
+      t.total = Math.max(after, t.total + (after - before), 1);
+      if (after > 0) t.done = false;
+    }
+    addLog(t, `${sec > 0 ? '+' : '−'} ${fmtWords(Math.abs(sec))}${after === 0 && sec < 0 ? ' (hit zero)' : ''}`);
+    if (t.type === 'down' && after === 0 && t.running) finish(t);
+    stopAlarmIfQuiet();
     commit();
   };
 
-  const start = () => {
-    if (state.running || state.remaining <= 0) return;
+  const start = t => {
+    if (t.running) return;
+    if (t.type === 'down' && t.base <= 0) return;
     unlockAudio();
-    state.endAt = Date.now() + state.remaining;
-    state.running = true;
-    state.done = false;
+    t.since = Date.now();
+    t.running = true;
+    t.done = false;
     commit();
   };
 
-  const pause = () => {
-    if (!state.running) return;
-    state.remaining = remainingMs();
-    state.running = false;
+  const pause = t => {
+    if (!t.running) return;
+    rebase(t);
+    t.running = false;
     commit();
   };
 
-  const reset = () => {
-    state.running = false;
-    state.remaining = state.total;
-    state.done = false;
-    stopAlarm();
+  const toggle = t => { t.running ? pause(t) : start(t); stopAlarmIfQuiet(); };
+
+  const reset = t => {
+    t.running = false;
+    t.base = t.type === 'down' ? t.total : 0;
+    t.done = false;
+    addLog(t, 'reset');
+    stopAlarmIfQuiet();
     commit();
   };
 
-  const finish = () => {
-    state.running = false;
-    state.remaining = 0;
-    state.done = true;
-    addLog('Time’s up!');
+  const finish = t => {
+    t.running = false;
+    t.base = 0;
+    t.done = true;
+    addLog(t, 'time’s up!');
     save();
     startAlarm();
     if ('Notification' in window && Notification.permission === 'granted') {
-      try { new Notification('Studying Timer', { body: 'Time’s up!' }); } catch {}
+      try { new Notification('Studying Timer', { body: `${t.name}: time’s up!` }); } catch {}
     }
   };
 
@@ -354,41 +482,97 @@
     alarmTimer = setInterval(() => { beep(); if (++n >= 20) stopAlarm(); }, 1200);
   };
   const stopAlarm = () => { clearInterval(alarmTimer); alarmTimer = null; };
+  const stopAlarmIfQuiet = () => { if (!state.timers.some(t => t.done)) stopAlarm(); };
 
   // ----- rendering -----
   const ring = $('ring');
   const CIRC = 2 * Math.PI * 54;
   ring.style.strokeDasharray = CIRC;
+  const esc = s => String(s).replace(/[<>&"]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[c]));
 
-  const render = () => {
-    const ms = remainingMs();
-    const text = fmtClock(ms);
+  const statusOf = t => {
+    const ms = valueMs(t);
+    if (t.done) return 'Time’s up!';
+    if (t.running) return t.type === 'down' ? 'Counting down' : 'Counting up';
+    if (t.type === 'down') return ms > 0 ? 'Paused' : 'Set a time';
+    return ms > 0 ? 'Paused' : 'Ready';
+  };
+
+  // Build the list rows once per structural change; tick() only updates text.
+  const buildList = () => {
+    $('timerList').innerHTML = state.timers.map(t => `
+      <div class="trow ${t.type}" data-id="${t.id}">
+        <div class="info">
+          <div class="name">${esc(t.name)}</div>
+          <div class="sub"></div>
+        </div>
+        <div class="time"></div>
+        <button class="go" aria-label="Start or pause"></button>
+      </div>`).join('');
+  };
+
+  const renderList = () => {
+    document.querySelectorAll('.trow').forEach(row => {
+      const t = state.timers.find(x => x.id === row.dataset.id);
+      if (!t) return;
+      const ms = valueMs(t);
+      row.classList.toggle('sel', t.id === state.selected);
+      row.classList.toggle('done', t.done);
+      row.querySelector('.time').textContent = fmtClock(ms, t.type);
+      row.querySelector('.sub').textContent = `${t.type === 'down' ? '⏳ Countdown' : '⏱ Stopwatch'} · ${statusOf(t)}`;
+      const go = row.querySelector('.go');
+      go.textContent = t.running ? '❚❚' : '▶';
+      go.classList.toggle('running', t.running);
+      go.disabled = !t.running && t.type === 'down' && ms <= 0;
+    });
+  };
+
+  const renderSelected = () => {
+    const t = sel();
+    $('selectedView').classList.toggle('hidden', !t);
+    $('entryCard').classList.toggle('hidden', !t);
+    $('emptyView').classList.toggle('hidden', !!t);
+    if (!t) { document.title = 'Studying Timer'; return; }
+
+    const ms = valueMs(t);
+    const text = fmtClock(ms, t.type);
     $('display').textContent = text;
     $('display').classList.toggle('long', text.length > 8);
-    const frac = state.total > 0 ? Math.min(1, ms / state.total) : 0;
+    if (document.activeElement !== $('faceName')) $('faceName').value = t.name;
+
+    const frac = t.type === 'down'
+      ? (t.total > 0 ? Math.min(1, ms / t.total) : 0)
+      : (ms % 60000) / 60000; // stopwatch: sweep once per minute
+    ring.style.transition = t.type === 'up' && frac < 0.01 ? 'none' : '';
     ring.style.strokeDashoffset = CIRC * (1 - frac);
-    $('face').classList.toggle('done', state.done);
+    $('face').classList.toggle('done', t.done);
+    $('face').classList.toggle('up', t.type === 'up');
 
-    $('status').textContent = state.done ? 'Time’s up!'
-      : state.running ? 'Running'
-      : ms > 0 ? 'Paused'
-      : 'Set a time to begin';
-
-    $('endsAt').textContent = state.running
-      ? 'Ends at ' + new Date(state.endAt).toLocaleString([], { weekday: ms > 86400000 ? 'short' : undefined, hour: 'numeric', minute: '2-digit' })
+    $('status').textContent = statusOf(t);
+    $('endsAt').textContent = t.running && t.type === 'down'
+      ? 'Ends at ' + new Date(t.since + t.base).toLocaleString([], { weekday: ms > 86400000 ? 'short' : undefined, hour: 'numeric', minute: '2-digit' })
       : '';
 
     const sb = $('startBtn');
-    sb.textContent = state.running ? 'Pause' : (state.remaining < state.total && state.remaining > 0 ? 'Resume' : 'Start');
-    sb.classList.toggle('running', state.running);
-    sb.disabled = !state.running && ms <= 0;
+    const fresh = t.type === 'down' ? t.base === t.total : t.base === 0;
+    sb.textContent = t.running ? 'Pause' : (fresh ? 'Start' : 'Resume');
+    sb.classList.toggle('running', t.running);
+    sb.disabled = !t.running && t.type === 'down' && ms <= 0;
 
-    document.title = state.running ? `${text} · Studying Timer` : state.done ? '⏰ Time’s up!' : 'Studying Timer';
+    $('entryFor').textContent = `— ${t.name}`;
+    $('setBtn').textContent = t.type === 'down' ? 'Set' : 'Set total';
+
+    const running = state.timers.filter(x => x.running);
+    const anyDone = state.timers.some(x => x.done);
+    document.title = anyDone ? '⏰ Time’s up!'
+      : t.running ? `${text} · ${t.name}`
+      : running.length ? `${running.length} running · Studying Timer`
+      : 'Studying Timer';
   };
 
   const renderLog = () => {
     $('log').innerHTML = state.log.length
-      ? state.log.map(l => `<li>${l.replace(/[<>&]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c]))}</li>`).join('')
+      ? state.log.map(l => `<li>${esc(l)}</li>`).join('')
       : '<li>Nothing yet.</li>';
   };
 
@@ -410,7 +594,8 @@
     renderPreview();
   };
 
-  const commit = () => { save(); render(); renderLog(); };
+  const render = () => { renderList(); renderSelected(); };
+  const commit = () => { save(); buildList(); render(); renderLog(); };
 
   // ----- quick chips -----
   [[-600, '−10m'], [-300, '−5m'], [-60, '−1m'], [60, '+1m'], [300, '+5m'], [600, '+10m'], [1800, '+30m'], [3600, '+1h']]
@@ -418,22 +603,63 @@
       const b = document.createElement('button');
       b.textContent = label;
       b.className = sec < 0 ? 'minus' : 'plus';
-      b.onclick = () => adjust(sec);
+      b.onclick = () => { const t = sel(); if (t) adjust(t, sec); };
       $('chips').appendChild(b);
     });
 
   // ----- wiring -----
+  $('timerList').addEventListener('click', e => {
+    const row = e.target.closest('.trow');
+    if (!row) return;
+    const t = state.timers.find(x => x.id === row.dataset.id);
+    if (e.target.closest('.go')) { toggle(t); return; }
+    state.selected = t.id;
+    save(); render();
+  });
+
+  const openNew = show => {
+    $('newCard').classList.toggle('hidden', !show);
+    $('newBtn').classList.toggle('hidden', show);
+    if (show) { $('newName').value = ''; $('newName').focus(); }
+  };
+  const setNewType = type => {
+    newType = type;
+    $('newDown').classList.toggle('on', type === 'down');
+    $('newUp').classList.toggle('on', type === 'up');
+  };
+  $('newBtn').onclick = () => openNew(true);
+  $('newCancel').onclick = () => openNew(false);
+  $('newDown').onclick = () => setNewType('down');
+  $('newUp').onclick = () => setNewType('up');
+  $('newCreate').onclick = () => { createTimer($('newName').value, newType); openNew(false); };
+  $('newName').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); $('newCreate').click(); } });
+
+  const rename = () => {
+    const t = sel(); if (!t) return;
+    const name = $('faceName').value.trim();
+    if (name && name !== t.name) { addLog(t, `renamed to "${name}"`); t.name = name; commit(); }
+    else $('faceName').value = t.name;
+  };
+  $('faceName').addEventListener('change', rename);
+  $('faceName').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); $('faceName').blur(); } });
+
   const withEntry = fn => () => {
+    const t = sel(); if (!t) return;
     const sec = readEntry();
-    if (sec === null || Number.isNaN(sec)) { renderPreview(); $('preview').classList.add('err'); if (sec === null) $('preview').textContent = 'Enter a time first'; return; }
-    fn(sec);
+    if (sec === null || Number.isNaN(sec)) {
+      renderPreview(); $('preview').classList.add('err');
+      if (sec === null) $('preview').textContent = 'Enter a time first';
+      return;
+    }
+    fn(t, sec);
   };
 
-  $('setBtn').onclick = withEntry(sec => { stopAlarm(); setTimer(sec); });
-  $('addBtn').onclick = withEntry(sec => { stopAlarm(); adjust(sec); });
-  $('subBtn').onclick = withEntry(sec => adjust(-sec));
-  $('startBtn').onclick = () => { stopAlarm(); state.running ? pause() : start(); };
-  $('resetBtn').onclick = reset;
+  $('setBtn').onclick = withEntry(setTime);
+  $('addBtn').onclick = withEntry((t, sec) => adjust(t, sec));
+  $('subBtn').onclick = withEntry((t, sec) => adjust(t, -sec));
+  $('startBtn').onclick = () => { const t = sel(); if (t) toggle(t); };
+  $('resetBtn').onclick = () => { const t = sel(); if (t) reset(t); };
+  $('deleteBtn').onclick = () => { const t = sel(); if (t) deleteTimer(t); };
   $('modeExact').onclick = () => { state.mode = 'exact'; save(); renderMode(); };
   $('modeDecimal').onclick = () => { state.mode = 'decimal'; save(); renderMode(); };
   ['inH', 'inM', 'inS', 'inDec', 'inUnit'].forEach(id => $(id).addEventListener('input', renderPreview));
@@ -441,17 +667,23 @@
   document.addEventListener('keydown', e => {
     const typing = e.target.matches('input, select');
     if (e.code === 'Space' && !typing) { e.preventDefault(); $('startBtn').click(); }
-    if (e.key === 'Enter' && typing) { e.preventDefault(); $('setBtn').click(); }
+    if (e.key === 'Enter' && typing && ['inH', 'inM', 'inS', 'inDec'].includes(e.target.id)) { e.preventDefault(); $('setBtn').click(); }
   });
 
   // ----- tick -----
-  const tick = () => {
-    if (state.running && Date.now() >= state.endAt) { finish(); renderLog(); }
-    render();
+  const checkFinished = () => {
+    let changed = false;
+    state.timers.forEach(t => {
+      if (t.running && t.type === 'down' && valueMs(t) <= 0) { finish(t); changed = true; }
+    });
+    return changed;
   };
+  const tick = () => { if (checkFinished()) commit(); else render(); };
 
   load();
-  if (state.running && Date.now() >= state.endAt) { finish(); }
+  if (!state.timers.length) createTimer('Timer 1', 'down');
+  if (!sel()) state.selected = state.timers[0].id;
+  checkFinished();
   renderMode();
   commit();
   setInterval(tick, 200);
