@@ -14,7 +14,8 @@ A timer that works like a normal clock-app timer, plus:
 - **Recently deleted:** deleting a timer shows an Undo button, and deleted timers can be restored for 30 days
 - **Stats for every timer**, including deleted ones: when it was created and deleted, initial time, time remaining
   (or current total for a stopwatch), time spent running, and times used (runs + adds + subtracts)
-- Alarm sound and a browser notification when a countdown finishes
+- **Overtime:** countdowns keep going past zero into negative time (−00:03:00), and adding, subtracting and stats all account for it
+- Alarm sound and a browser notification when a countdown hits zero
 - Shows the clock time a countdown will end at
 - Every timer keeps running correctly across page refreshes
 

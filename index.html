@@ -64,6 +64,7 @@
   .trow .sub { font-size: .78rem; color: var(--muted); }
   .trow .time { font-variant-numeric: tabular-nums; font-size: 1.25rem; font-weight: 400; }
   .trow.done .time { color: var(--sub); animation: blink 1s steps(2) infinite; }
+  .trow.over .time { color: var(--sub); }
   .trow .go {
     width: 38px; height: 38px; border-radius: 50%; border: none; cursor: pointer;
     background: var(--accent-soft); color: var(--accent); font-size: .95rem; flex: none;
@@ -104,7 +105,8 @@
   #display.long { font-size: clamp(1.7rem, 8.5vw, 2.6rem); }
   #status { font-size: .88rem; color: var(--muted); }
   #endsAt { font-size: .82rem; color: var(--muted); min-height: 1.2em; }
-  .face.done .progress { stroke: var(--sub); }
+  .face.done .progress, .face.over .progress { stroke: var(--sub); }
+  .face.over #display { color: var(--sub); }
   .face.done #display { color: var(--sub); animation: blink 1s steps(2) infinite; }
   @keyframes blink { 50% { opacity: .35; } }
 
@@ -392,20 +394,23 @@
   const valueMs = t => {
     if (!t.running) return t.base;
     const d = Date.now() - t.since;
-    return t.type === 'down' ? Math.max(0, t.base - d) : t.base + d;
+    return t.type === 'down' ? t.base - d : t.base + d;  // can go negative (overtime)
   };
   // Freeze the running value into base, restarting the clock from now.
   const rebase = t => { t.base = valueMs(t); if (t.running) t.since = Date.now(); };
 
   const fmtClock = (ms, type) => {
-    const t = type === 'down' ? Math.ceil(ms / 1000) : Math.floor(ms / 1000);
+    const whole = type === 'down' ? Math.ceil(ms / 1000) : Math.floor(ms / 1000);
+    const sign = whole < 0 ? '−' : '';
+    const t = Math.abs(whole);
     const h = Math.floor(t / 3600), m = Math.floor(t % 3600 / 60), s = t % 60;
     const pad = n => String(n).padStart(2, '0');
-    return `${pad(h)}:${pad(m)}:${pad(s)}`;
+    return `${sign}${pad(h)}:${pad(m)}:${pad(s)}`;
   };
 
   const fmtWords = sec => {
     sec = Math.round(sec);
+    if (sec < 0) return '−' + fmtWords(-sec);
     const h = Math.floor(sec / 3600), m = Math.floor(sec % 3600 / 60), s = sec % 60;
     const parts = [];
     if (h) parts.push(`${h} hr`);
@@ -467,7 +472,7 @@
     state.selected = (state.timers[i] || state.timers[i - 1] || {}).id || null;
     lastDeleted = t.id;
     showToast(`Deleted "${t.name}" — stats kept`);
-    stopAlarmIfQuiet();
+    stopAlarm();
     commit();
   };
 
@@ -491,12 +496,12 @@
   };
 
   const setTime = (t, sec) => {
-    t.done = false;
+    t.done = t.type === 'down' && sec <= 0;
     t.base = sec * 1000;
     t.total = sec * 1000;
     if (t.initial === null) t.initial = sec * 1000;
     if (t.running) t.since = Date.now();
-    stopAlarmIfQuiet();
+    stopAlarm();
     commit();
   };
 
@@ -504,25 +509,28 @@
     if (!sec) return;
     rebase(t);
     const before = t.base;
-    const after = Math.max(0, before + sec * 1000);
+    const after = before + sec * 1000;  // no floor: subtracting can push it negative
     t.base = after;
     if (sec > 0) t.adds++; else t.subs++;
     if (t.type === 'down') {
-      t.total = Math.max(after, t.total + (after - before), 1);
+      // keep the ring's 100% mark sensible; overtime doesn't shrink it
+      if (after > 0) t.total = Math.max(after, t.total + (after - before), 1);
+      // back above zero = can ring again. Crossing zero while running rings on the next tick;
+      // crossing while paused just marks it done so starting it later doesn't ring.
       if (after > 0) t.done = false;
+      else if (!t.running) t.done = true;
     }
-    if (t.type === 'down' && after === 0 && t.running) finish(t);
-    stopAlarmIfQuiet();
+    stopAlarm();
     commit();
   };
 
   const start = t => {
     if (t.running) return;
-    if (t.type === 'down' && t.base <= 0) return;
     unlockAudio();
     t.since = t.runStart = Date.now();
     t.running = true;
-    t.done = false;
+    // starting at or below zero just keeps counting into overtime, without ringing
+    t.done = t.type === 'down' && t.base <= 0;
     t.runs++;
     commit();
   };
@@ -533,21 +541,18 @@
     commit();
   };
 
-  const toggle = t => { t.running ? pause(t) : start(t); stopAlarmIfQuiet(); };
+  const toggle = t => { t.running ? pause(t) : start(t); stopAlarm(); };
 
   const reset = t => {
     stopRun(t);
     t.base = t.type === 'down' ? t.total : 0;
-    t.done = false;
-    stopAlarmIfQuiet();
+    t.done = t.type === 'down' && t.base <= 0;
+    stopAlarm();
     commit();
   };
 
+  // A running countdown just crossed zero: ring, but keep it running into overtime.
   const finish = t => {
-    // The countdown actually hit zero at since + base, which may be earlier than now
-    // (e.g. the tab was closed), so only count time up to that moment as spent.
-    stopRun(t, Math.min(Date.now(), t.since + t.base));
-    t.base = 0;
     t.done = true;
     save();
     startAlarm();
@@ -587,7 +592,6 @@
     alarmTimer = setInterval(() => { beep(); if (++n >= 20) stopAlarm(); }, 1200);
   };
   const stopAlarm = () => { clearInterval(alarmTimer); alarmTimer = null; };
-  const stopAlarmIfQuiet = () => { if (!state.timers.some(t => t.done)) stopAlarm(); };
 
   // ----- rendering -----
   const ring = $('ring');
@@ -597,10 +601,14 @@
 
   const statusOf = t => {
     const ms = valueMs(t);
-    if (t.done) return 'Time’s up!';
-    if (t.running) return t.type === 'down' ? 'Counting down' : 'Counting up';
-    if (t.type === 'down') return ms > 0 ? 'Paused' : 'Set a time';
-    return ms > 0 ? 'Paused' : 'Ready';
+    if (t.type === 'down') {
+      if (t.running) return ms > 0 ? 'Counting down' : 'Overtime';
+      if (ms < 0) return 'Paused in overtime';
+      if (ms === 0) return t.done ? 'Time’s up!' : 'Set a time';
+      return 'Paused';
+    }
+    if (t.running) return 'Counting up';
+    return ms !== 0 ? 'Paused' : 'Ready';
   };
 
   // Build the list rows once per structural change; tick() only updates text.
@@ -623,13 +631,13 @@
       if (!t) return;
       const ms = valueMs(t);
       row.classList.toggle('sel', t.id === state.selected);
-      row.classList.toggle('done', t.done);
+      row.classList.toggle('done', t.done && !t.running && ms >= 0);
+      row.classList.toggle('over', ms < 0);
       row.querySelector('.time').textContent = fmtClock(ms, t.type);
       row.querySelector('.sub').textContent = `${t.type === 'down' ? '⏳ Countdown' : '⏱ Stopwatch'} · ${statusOf(t)}`;
       const go = row.querySelector('.go');
       go.textContent = t.running ? '❚❚' : '▶';
       go.classList.toggle('running', t.running);
-      go.disabled = !t.running && t.type === 'down' && ms <= 0;
     });
   };
 
@@ -646,24 +654,25 @@
     $('display').classList.toggle('long', text.length > 8);
     if (document.activeElement !== $('faceName')) $('faceName').value = t.name;
 
+    // countdown: ring empties toward zero, then refills in red as overtime grows
     const frac = t.type === 'down'
-      ? (t.total > 0 ? Math.min(1, ms / t.total) : 0)
+      ? (t.total > 0 ? Math.min(1, Math.abs(ms) / t.total) : (ms < 0 ? 1 : 0))
       : (ms % 60000) / 60000; // stopwatch: sweep once per minute
     ring.style.transition = t.type === 'up' && frac < 0.01 ? 'none' : '';
     ring.style.strokeDashoffset = CIRC * (1 - frac);
-    $('face').classList.toggle('done', t.done);
+    $('face').classList.toggle('done', t.done && !t.running && ms >= 0);
+    $('face').classList.toggle('over', ms < 0);
     $('face').classList.toggle('up', t.type === 'up');
 
     $('status').textContent = statusOf(t);
     $('endsAt').textContent = t.running && t.type === 'down'
-      ? 'Ends at ' + new Date(t.since + t.base).toLocaleString([], { weekday: ms > 86400000 ? 'short' : undefined, hour: 'numeric', minute: '2-digit' })
+      ? (ms > 0 ? 'Ends at ' : 'Hit zero at ') + new Date(t.since + t.base).toLocaleString([], { weekday: Math.abs(ms) > 86400000 ? 'short' : undefined, hour: 'numeric', minute: '2-digit' })
       : '';
 
     const sb = $('startBtn');
     const fresh = t.type === 'down' ? t.base === t.total : t.base === 0;
     sb.textContent = t.running ? 'Pause' : (fresh ? 'Start' : 'Resume');
     sb.classList.toggle('running', t.running);
-    sb.disabled = !t.running && t.type === 'down' && ms <= 0;
 
     $('entryFor').textContent = `— ${t.name}`;
     // once a countdown is finished, make removing it the obvious next step
@@ -673,8 +682,8 @@
 
     const running = state.timers.filter(x => x.running);
     const anyDone = state.timers.some(x => x.done);
-    document.title = anyDone ? '⏰ Time’s up!'
-      : t.running ? `${text} · ${t.name}`
+    document.title = t.running ? `${text} · ${t.name}`
+      : anyDone ? '⏰ Time’s up!'
       : running.length ? `${running.length} running · Studying Timer`
       : 'Studying Timer';
   };
@@ -718,7 +727,7 @@
           <div><dt>Created</dt><dd>${t.createdAt ? fmtDate(t.createdAt) : 'Unknown'}</dd></div>
           <div><dt>Deleted</dt><dd>${fmtDate(t.deletedAt)}</dd></div>
           <div><dt>Initial time</dt><dd>${t.initial !== null ? fmtWords(t.initial / 1000) : !t.createdAt ? 'Unknown' : (t.type === 'up' ? '0 sec' : 'Not set')}</dd></div>
-          <div><dt>${t.type === 'down' ? 'Time remaining' : 'Current total'}</dt><dd>${fmtWords(Math.floor(valueMs(t) / 1000))}</dd></div>
+          <div><dt>${t.type === 'down' ? 'Time remaining' : 'Current total'}</dt><dd>${fmtWords(Math.trunc(valueMs(t) / 1000))}${valueMs(t) <= -1000 ? ' <small>(overtime)</small>' : ''}</dd></div>
           <div><dt>Time spent running</dt><dd>${fmtWords(Math.floor(spentMs(t) / 1000))}</dd></div>
           <div><dt>Times used</dt><dd>${used}<br><small>${plural(t.runs, 'run')} · ${t.adds} added · ${t.subs} subtracted</small></dd></div>
         </dl>
@@ -834,7 +843,7 @@
   const checkFinished = () => {
     let changed = false;
     state.timers.forEach(t => {
-      if (t.running && t.type === 'down' && valueMs(t) <= 0) { finish(t); changed = true; }
+      if (t.running && t.type === 'down' && !t.done && valueMs(t) <= 0) { finish(t); changed = true; }
     });
     return changed;
   };
