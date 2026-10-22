@@ -341,7 +341,7 @@
   const TRASH_DAYS = 30;
 
   const uid = () => Math.random().toString(36).slice(2, 10);
-  const STAT_DEFAULTS = { createdAt: null, deletedAt: null, initial: null, runs: 0, adds: 0, subs: 0, spent: 0, runStart: 0 };
+  const STAT_DEFAULTS = { createdAt: null, deletedAt: null, initial: null, runs: 0, adds: 0, subs: 0, spent: 0, removed: 0, runStart: 0 };
   const makeTimer = (name, type) => ({
     id: uid(), name, type, base: 0, since: 0, running: false, total: 0, done: false,
     ...STAT_DEFAULTS, createdAt: Date.now(),
@@ -437,7 +437,10 @@
 
   // ----- actions -----
   // Time actually spent running, including the current run.
-  const spentMs = t => t.spent + (t.running ? Date.now() - t.runStart : 0);
+  const runMs = t => t.spent + (t.running ? Date.now() - t.runStart : 0);
+  // Time spent: for a countdown, everything that came off the clock, whether by running
+  // or by subtracting (= initial + added − remaining). For a stopwatch, its running time.
+  const spentMs = t => runMs(t) + (t.type === 'down' ? t.removed : 0);
   // Close out the current run: add it to time spent and freeze the value.
   const stopRun = (t, endAt = Date.now()) => {
     if (!t.running) return;
@@ -511,7 +514,7 @@
     const before = t.base;
     const after = before + sec * 1000;  // no floor: subtracting can push it negative
     t.base = after;
-    if (sec > 0) t.adds++; else t.subs++;
+    if (sec > 0) t.adds++; else { t.subs++; t.removed += -sec * 1000; }
     if (t.type === 'down') {
       // keep the ring's 100% mark sensible; overtime doesn't shrink it
       if (after > 0) t.total = Math.max(after, t.total + (after - before), 1);
@@ -727,8 +730,8 @@
           <div><dt>Created</dt><dd>${t.createdAt ? fmtDate(t.createdAt) : 'Unknown'}</dd></div>
           <div><dt>Deleted</dt><dd>${fmtDate(t.deletedAt)}</dd></div>
           <div><dt>Initial time</dt><dd>${t.initial !== null ? fmtWords(t.initial / 1000) : !t.createdAt ? 'Unknown' : (t.type === 'up' ? '0 sec' : 'Not set')}</dd></div>
-          <div><dt>${t.type === 'down' ? 'Time remaining' : 'Current total'}</dt><dd>${fmtWords(Math.trunc(valueMs(t) / 1000))}${valueMs(t) <= -1000 ? ' <small>(overtime)</small>' : ''}</dd></div>
-          <div><dt>Time spent running</dt><dd>${fmtWords(Math.floor(spentMs(t) / 1000))}</dd></div>
+          <div><dt>${t.type === 'down' ? 'Time remaining' : 'Current total'}</dt><dd>${fmtWords((t.type === 'down' ? Math.ceil : Math.floor)(valueMs(t) / 1000))}${valueMs(t) <= -1000 ? ' <small>(overtime)</small>' : ''}</dd></div>
+          <div><dt>Time spent</dt><dd>${fmtWords(Math.floor(spentMs(t) / 1000))}</dd></div>
           <div><dt>Times used</dt><dd>${used}<br><small>${plural(t.runs, 'run')} · ${t.adds} added · ${t.subs} subtracted</small></dd></div>
         </dl>
       </div>`;
