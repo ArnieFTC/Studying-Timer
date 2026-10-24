@@ -218,6 +218,7 @@
   .stat dt { font-size: .72rem; color: var(--muted); }
   .stat dd { margin: 0; font-size: .88rem; font-variant-numeric: tabular-nums; }
   .stat dd small { color: var(--muted); }
+  .edit-spent { border: none; background: none; color: var(--accent); font-size: .78rem; cursor: pointer; padding: 0 2px; text-decoration: underline; text-underline-offset: 2px; }
 
   .toast {
     position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%);
@@ -341,7 +342,7 @@
   const TRASH_DAYS = 30;
 
   const uid = () => Math.random().toString(36).slice(2, 10);
-  const STAT_DEFAULTS = { createdAt: null, deletedAt: null, initial: null, runs: 0, adds: 0, subs: 0, spent: 0, removed: 0, runStart: 0 };
+  const STAT_DEFAULTS = { createdAt: null, deletedAt: null, initial: null, runs: 0, adds: 0, subs: 0, spent: 0, removed: 0, spentFix: 0, runStart: 0 };
   const makeTimer = (name, type) => ({
     id: uid(), name, type, base: 0, since: 0, running: false, total: 0, done: false,
     ...STAT_DEFAULTS, createdAt: Date.now(),
@@ -440,7 +441,8 @@
   const runMs = t => t.spent + (t.running ? Date.now() - t.runStart : 0);
   // Time spent: for a countdown, everything that came off the clock, whether by running
   // or by subtracting (= initial + added − remaining). For a stopwatch, its running time.
-  const spentMs = t => runMs(t) + (t.type === 'down' ? t.removed : 0);
+  // spentFix = manual correction from the stats panel's Edit button
+  const spentMs = t => runMs(t) + (t.type === 'down' ? t.removed : 0) + t.spentFix;
   // Close out the current run: add it to time spent and freeze the value.
   const stopRun = (t, endAt = Date.now()) => {
     if (!t.running) return;
@@ -720,7 +722,7 @@
     $('statsList').innerHTML = all.map(([t, cls, label]) => {
       const used = t.runs + t.adds + t.subs;
       return `
-      <div class="stat">
+      <div class="stat" data-id="${t.id}">
         <div class="stat-head">
           <span class="name">${esc(t.name)}</span>
           <span class="badge">${t.type === 'down' ? 'Countdown' : 'Stopwatch'}</span>
@@ -731,7 +733,7 @@
           <div><dt>Deleted</dt><dd>${fmtDate(t.deletedAt)}</dd></div>
           <div><dt>Initial time</dt><dd>${t.initial !== null ? fmtWords(t.initial / 1000) : !t.createdAt ? 'Unknown' : (t.type === 'up' ? '0 sec' : 'Not set')}</dd></div>
           <div><dt>${t.type === 'down' ? 'Time remaining' : 'Current total'}</dt><dd>${fmtWords((t.type === 'down' ? Math.ceil : Math.floor)(valueMs(t) / 1000))}${valueMs(t) <= -1000 ? ' <small>(overtime)</small>' : ''}</dd></div>
-          <div><dt>Time spent</dt><dd>${fmtWords(Math.floor(spentMs(t) / 1000))}</dd></div>
+          <div><dt>Time spent</dt><dd>${fmtWords(Math.floor(spentMs(t) / 1000))} <button class="edit-spent" title="Correct time spent">Edit</button></dd></div>
           <div><dt>Times used</dt><dd>${used}<br><small>${plural(t.runs, 'run')} · ${t.adds} added · ${t.subs} subtracted</small></dd></div>
         </dl>
       </div>`;
@@ -779,6 +781,44 @@
     if (e.target.closest('.del')) { deleteTimer(t); return; }
     state.selected = t.id;
     save(); render();
+  });
+
+  // Parse "17:52:45", "17:52", "17h 52m 45s", or decimal hours like "17.88" into seconds.
+  const parseDuration = str => {
+    str = str.trim().toLowerCase();
+    if (!str) return NaN;
+    if (/^\d+(:\d{1,2}){1,2}$/.test(str)) {
+      const [h, m, sec = 0] = str.split(':').map(Number);
+      return h * 3600 + m * 60 + sec;
+    }
+    const units = str.match(/^(?:(\d+(?:\.\d+)?)\s*h\w*)?\s*(?:(\d+(?:\.\d+)?)\s*m\w*)?\s*(?:(\d+(?:\.\d+)?)\s*s\w*)?$/);
+    if (units && units[0] && (units[1] || units[2] || units[3])) {
+      return Math.round((+units[1] || 0) * 3600 + (+units[2] || 0) * 60 + (+units[3] || 0));
+    }
+    return /^\d+(\.\d+)?$/.test(str) ? Math.round(Number(str) * 3600) : NaN;
+  };
+  const clockOf = sec => fmtClock(sec * 1000, 'up');
+
+  $('statsList').addEventListener('click', e => {
+    if (!e.target.closest('.edit-spent')) return;
+    const id = e.target.closest('.stat').dataset.id;
+    const t = [...state.timers, ...state.trash, ...state.archive].find(x => x.id === id);
+    if (!t) return;
+    const current = Math.floor(spentMs(t) / 1000);
+    // For a countdown, suggest initial time − time remaining
+    const suggested = t.type === 'down' && t.initial !== null
+      ? Math.max(0, Math.round(t.initial / 1000) - Math.ceil(valueMs(t) / 1000))
+      : current;
+    const hint = t.type === 'down' && t.initial !== null
+      ? `\n\nInitial time − time remaining = ${clockOf(suggested)} (filled in below).` : '';
+    const answer = prompt(
+      `Correct the time spent for "${t.name}".\nCurrently: ${clockOf(current)}${hint}\n\nEnter h:mm:ss (17:52:45), 17h 52m 45s, or decimal hours (17.88):`,
+      clockOf(suggested));
+    if (answer === null) return;
+    const sec = parseDuration(answer);
+    if (!isFinite(sec) || sec < 0) { alert('Couldn’t read that time. Try something like 17:52:45.'); return; }
+    t.spentFix += sec * 1000 - spentMs(t);
+    commit();
   });
 
   $('trashList').addEventListener('click', e => {
