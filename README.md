@@ -11,6 +11,7 @@ A timer that works like a normal clock-app timer, plus:
   - **Exact:** hours, minutes, seconds (e.g. `1 hr 13 min 28 sec`)
   - **Decimal:** e.g. `1.11` hours is converted to `1 hr 6 min 36 sec` (minutes and seconds work too)
 - Matching quick buttons: −1h −30m −10m −5m −1m and +1h +30m +10m +5m +1m
+- **End a timer** when you're done with it: it leaves your timer list but stays in Stats (marked Ended, with a Reopen button)
 - **Recently deleted:** deleting a timer shows an Undo button, and deleted timers can be restored for 30 days
 - **Stats for every timer**, including deleted ones: when it was created and deleted, initial time, time remaining
   (or current total for a stopwatch), time spent (for a countdown: time run plus time subtracted), and times used (runs + adds + subtracts)

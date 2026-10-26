@@ -123,13 +123,20 @@
   #startBtn { background: var(--accent-soft); color: var(--accent); }
   .face.up ~ .controls #startBtn { background: var(--up-soft); color: var(--up); }
   #startBtn.running, .face.up ~ .controls #startBtn.running { background: color-mix(in srgb, var(--sub) 18%, transparent); color: var(--sub); }
+  .finish-row { display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; margin: 14px 0 0; }
+  #endBtn {
+    border: 1px solid color-mix(in srgb, var(--add) 45%, transparent);
+    background: none; color: var(--add); border-radius: 999px;
+    padding: 8px 16px; font-size: .9rem; font-weight: 600; cursor: pointer;
+  }
+  #endBtn:hover { background: color-mix(in srgb, var(--add) 10%, transparent); }
+  #endBtn.finished { background: var(--add); border-color: var(--add); color: #fff; }
   #deleteBtn {
     border: 1px solid color-mix(in srgb, var(--sub) 40%, transparent);
     background: none; color: var(--sub); border-radius: 999px;
     padding: 8px 16px; font-size: .9rem; font-weight: 600; cursor: pointer;
   }
   #deleteBtn:hover { background: color-mix(in srgb, var(--sub) 10%, transparent); }
-  #deleteBtn.finished { background: var(--sub); border-color: var(--sub); color: #fff; }
   .trow .del {
     width: 32px; height: 32px; border-radius: 50%; border: none; cursor: pointer; flex: none;
     background: none; color: var(--muted); font-size: 1rem;
@@ -213,6 +220,8 @@
   .stat-head .name { font-weight: 600; }
   .badge { font-size: .72rem; padding: 2px 8px; border-radius: 999px; background: var(--bg); color: var(--muted); }
   .badge.active { background: color-mix(in srgb, var(--add) 16%, transparent); color: var(--add); }
+  .badge.ended { background: color-mix(in srgb, var(--up) 16%, transparent); color: var(--up); }
+  .reopen { margin-left: auto; border: 1px solid var(--line); background: none; color: var(--text); border-radius: 8px; padding: 4px 10px; font-size: .78rem; cursor: pointer; }
   .badge.deleted { background: color-mix(in srgb, var(--sub) 14%, transparent); color: var(--sub); }
   .stat dl { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px 14px; margin: 0; }
   .stat dt { font-size: .72rem; color: var(--muted); }
@@ -269,7 +278,10 @@
       <button class="round" id="resetBtn">Reset</button>
       <button class="round" id="startBtn">Start</button>
     </div>
-    <p style="text-align:center;margin:14px 0 0"><button id="deleteBtn">🗑 Delete timer</button></p>
+    <div class="finish-row">
+      <button id="endBtn" title="Remove it from your timers but keep it in Stats">✓ End timer</button>
+      <button id="deleteBtn">🗑 Delete timer</button>
+    </div>
   </div>
   <div class="empty hidden" id="emptyView">No timers yet — make one above.</div>
 
@@ -336,13 +348,14 @@
   //   stopwatch: elapsed   = base + (now - since)
   // timers  = active timers
   // trash   = deleted timers that can still be restored (for TRASH_DAYS)
-  // archive = timers deleted for good; kept only so their stats still show
+  // archive = ended timers (endedAt set; can be reopened) and timers deleted for good;
+  //           kept so their stats still show
   let state = { timers: [], trash: [], archive: [], selected: null, mode: 'exact' };
   let newType = 'down';
   const TRASH_DAYS = 30;
 
   const uid = () => Math.random().toString(36).slice(2, 10);
-  const STAT_DEFAULTS = { createdAt: null, deletedAt: null, initial: null, runs: 0, adds: 0, subs: 0, spent: 0, removed: 0, spentFix: 0, runStart: 0 };
+  const STAT_DEFAULTS = { createdAt: null, deletedAt: null, endedAt: null, initial: null, runs: 0, adds: 0, subs: 0, spent: 0, removed: 0, spentFix: 0, runStart: 0 };
   const makeTimer = (name, type) => ({
     id: uid(), name, type, base: 0, since: 0, running: false, total: 0, done: false,
     ...STAT_DEFAULTS, createdAt: Date.now(),
@@ -459,7 +472,7 @@
     commit();
   };
 
-  let toastTimer = null, lastDeleted = null;
+  let toastTimer = null, lastRemoved = null;
   const showToast = text => {
     $('toastText').textContent = text;
     $('toast').classList.remove('hidden');
@@ -475,9 +488,35 @@
     state.timers.splice(i, 1);
     state.trash.unshift(t);
     state.selected = (state.timers[i] || state.timers[i - 1] || {}).id || null;
-    lastDeleted = t.id;
+    lastRemoved = t.id;
     showToast(`Deleted "${t.name}" — stats kept`);
     stopAlarm();
+    commit();
+  };
+
+  // End = finished with it: off the timer list, not in Recently deleted, still in Stats.
+  const endTimer = t => {
+    stopRun(t);
+    t.done = false;
+    t.endedAt = Date.now();
+    const i = state.timers.indexOf(t);
+    state.timers.splice(i, 1);
+    state.archive.unshift(t);
+    state.selected = (state.timers[i] || state.timers[i - 1] || {}).id || null;
+    lastRemoved = t.id;
+    showToast(`Ended "${t.name}" — saved in Stats`);
+    stopAlarm();
+    commit();
+  };
+
+  const reopenTimer = id => {
+    const t = state.archive.find(x => x.id === id && x.endedAt);
+    if (!t) return;
+    state.archive = state.archive.filter(x => x !== t);
+    t.endedAt = null;
+    state.timers.push(t);
+    state.selected = t.id;
+    $('toast').classList.add('hidden');
     commit();
   };
 
@@ -681,8 +720,8 @@
 
     $('entryFor').textContent = `— ${t.name}`;
     // once a countdown is finished, make removing it the obvious next step
-    $('deleteBtn').textContent = t.done ? '✓ Done with it — delete timer' : '🗑 Delete timer';
-    $('deleteBtn').classList.toggle('finished', t.done);
+    $('endBtn').textContent = t.done ? '✓ Done with it — end timer' : '✓ End timer';
+    $('endBtn').classList.toggle('finished', t.done);
     $('setBtn').textContent = t.type === 'down' ? 'Set' : 'Set total';
 
     const running = state.timers.filter(x => x.running);
@@ -714,8 +753,9 @@
   const renderStats = () => {
     const all = [
       ...state.timers.map(t => [t, 'active', 'Active']),
+      ...state.archive.filter(t => t.endedAt).map(t => [t, 'ended', 'Ended']),
       ...state.trash.map(t => [t, 'deleted', 'Recently deleted']),
-      ...state.archive.map(t => [t, 'deleted', 'Deleted for good']),
+      ...state.archive.filter(t => !t.endedAt).map(t => [t, 'deleted', 'Deleted for good']),
     ];
     const totalSpent = all.reduce((sum, [t]) => sum + spentMs(t), 0);
     $('statsTotal').innerHTML = `Total time spent across all timers: <b>${fmtWords(totalSpent / 1000)}</b>`;
@@ -727,10 +767,13 @@
           <span class="name">${esc(t.name)}</span>
           <span class="badge">${t.type === 'down' ? 'Countdown' : 'Stopwatch'}</span>
           <span class="badge ${cls}">${label}</span>
+          ${cls === 'ended' ? '<button class="reopen" title="Put it back in your timers">Reopen</button>' : ''}
         </div>
         <dl>
           <div><dt>Created</dt><dd>${t.createdAt ? fmtDate(t.createdAt) : 'Unknown'}</dd></div>
-          <div><dt>Deleted</dt><dd>${fmtDate(t.deletedAt)}</dd></div>
+          ${t.endedAt
+            ? `<div><dt>Ended</dt><dd>${fmtDate(t.endedAt)}</dd></div>`
+            : `<div><dt>Deleted</dt><dd>${fmtDate(t.deletedAt)}</dd></div>`}
           <div><dt>Initial time</dt><dd>${t.initial !== null ? fmtWords(t.initial / 1000) : !t.createdAt ? 'Unknown' : (t.type === 'up' ? '0 sec' : 'Not set')}</dd></div>
           <div><dt>${t.type === 'down' ? 'Time remaining' : 'Current total'}</dt><dd>${fmtWords((t.type === 'down' ? Math.ceil : Math.floor)(valueMs(t) / 1000))}${valueMs(t) <= -1000 ? ' <small>(overtime)</small>' : ''}</dd></div>
           <div><dt>Time spent</dt><dd>${fmtWords(Math.floor(spentMs(t) / 1000))} <button class="edit-spent" title="Correct time spent">Edit</button></dd></div>
@@ -800,6 +843,7 @@
   const clockOf = sec => fmtClock(sec * 1000, 'up');
 
   $('statsList').addEventListener('click', e => {
+    if (e.target.closest('.reopen')) { reopenTimer(e.target.closest('.stat').dataset.id); return; }
     if (!e.target.closest('.edit-spent')) return;
     const id = e.target.closest('.stat').dataset.id;
     const t = [...state.timers, ...state.trash, ...state.archive].find(x => x.id === id);
@@ -827,7 +871,7 @@
     if (e.target.closest('.restore')) restoreTimer(row.dataset.id);
     if (e.target.closest('.forever')) deleteForever(row.dataset.id);
   });
-  $('toastUndo').onclick = () => restoreTimer(lastDeleted);
+  $('toastUndo').onclick = () => { restoreTimer(lastRemoved); reopenTimer(lastRemoved); };
 
   const openNew = show => {
     $('newCard').classList.toggle('hidden', !show);
@@ -872,6 +916,7 @@
   $('startBtn').onclick = () => { const t = sel(); if (t) toggle(t); };
   $('resetBtn').onclick = () => { const t = sel(); if (t) reset(t); };
   $('deleteBtn').onclick = () => { const t = sel(); if (t) deleteTimer(t); };
+  $('endBtn').onclick = () => { const t = sel(); if (t) endTimer(t); };
   $('modeExact').onclick = () => { state.mode = 'exact'; save(); renderMode(); };
   $('modeDecimal').onclick = () => { state.mode = 'decimal'; save(); renderMode(); };
   ['inH', 'inM', 'inS', 'inDec', 'inUnit'].forEach(id => $(id).addEventListener('input', renderPreview));
