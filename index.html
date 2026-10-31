@@ -452,10 +452,13 @@
   // ----- actions -----
   // Time actually spent running, including the current run.
   const runMs = t => t.spent + (t.running ? Date.now() - t.runStart : 0);
-  // Time spent: for a countdown, everything that came off the clock, whether by running
-  // or by subtracting (= initial + added − remaining). For a stopwatch, its running time.
-  // spentFix = manual correction from the stats panel's Edit button
-  const spentMs = t => runMs(t) + (t.type === 'down' ? t.removed : 0) + t.spentFix;
+  // Time spent:
+  //   countdown = initial time − time remaining, always. Running and subtracting raise it,
+  //               adding time back lowers it, and overtime keeps raising it past the initial.
+  //   stopwatch = time it actually ran (+ any manual correction from the stats Edit button).
+  const spentMs = t => t.type === 'down'
+    ? (t.initial ?? t.total) - valueMs(t)
+    : runMs(t) + t.spentFix;
   // Close out the current run: add it to time spent and freeze the value.
   const stopRun = (t, endAt = Date.now()) => {
     if (!t.running) return;
@@ -555,7 +558,7 @@
     const before = t.base;
     const after = before + sec * 1000;  // no floor: subtracting can push it negative
     t.base = after;
-    if (sec > 0) t.adds++; else { t.subs++; t.removed += -sec * 1000; }
+    if (sec > 0) t.adds++; else t.subs++;
     if (t.type === 'down') {
       // keep the ring's 100% mark sensible; overtime doesn't shrink it
       if (after > 0) t.total = Math.max(after, t.total + (after - before), 1);
@@ -776,7 +779,7 @@
             : `<div><dt>Deleted</dt><dd>${fmtDate(t.deletedAt)}</dd></div>`}
           <div><dt>Initial time</dt><dd>${t.initial !== null ? fmtWords(t.initial / 1000) : !t.createdAt ? 'Unknown' : (t.type === 'up' ? '0 sec' : 'Not set')}</dd></div>
           <div><dt>${t.type === 'down' ? 'Time remaining' : 'Current total'}</dt><dd>${fmtWords((t.type === 'down' ? Math.ceil : Math.floor)(valueMs(t) / 1000))}${valueMs(t) <= -1000 ? ' <small>(overtime)</small>' : ''}</dd></div>
-          <div><dt>Time spent</dt><dd>${fmtWords(Math.floor(spentMs(t) / 1000))} <button class="edit-spent" title="Correct time spent">Edit</button></dd></div>
+          <div><dt>Time spent</dt><dd>${fmtWords(Math.floor(spentMs(t) / 1000))}${t.type === 'up' ? ' <button class="edit-spent" title="Correct time spent">Edit</button>' : ''}</dd></div>
           <div><dt>Times used</dt><dd>${used}<br><small>${plural(t.runs, 'run')} · ${t.adds} added · ${t.subs} subtracted</small></dd></div>
         </dl>
       </div>`;
@@ -848,16 +851,11 @@
     const id = e.target.closest('.stat').dataset.id;
     const t = [...state.timers, ...state.trash, ...state.archive].find(x => x.id === id);
     if (!t) return;
+    // (only stopwatches have this button; a countdown's time spent is initial − remaining)
     const current = Math.floor(spentMs(t) / 1000);
-    // For a countdown, suggest initial time − time remaining
-    const suggested = t.type === 'down' && t.initial !== null
-      ? Math.max(0, Math.round(t.initial / 1000) - Math.ceil(valueMs(t) / 1000))
-      : current;
-    const hint = t.type === 'down' && t.initial !== null
-      ? `\n\nInitial time − time remaining = ${clockOf(suggested)} (filled in below).` : '';
     const answer = prompt(
-      `Correct the time spent for "${t.name}".\nCurrently: ${clockOf(current)}${hint}\n\nEnter h:mm:ss (17:52:45), 17h 52m 45s, or decimal hours (17.88):`,
-      clockOf(suggested));
+      `Correct the time spent for "${t.name}".\nCurrently: ${clockOf(current)}\n\nEnter h:mm:ss (17:52:45), 17h 52m 45s, or decimal hours (17.88):`,
+      clockOf(current));
     if (answer === null) return;
     const sec = parseDuration(answer);
     if (!isFinite(sec) || sec < 0) { alert('Couldn’t read that time. Try something like 17:52:45.'); return; }
