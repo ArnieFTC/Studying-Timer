@@ -227,6 +227,22 @@
   .stat dt { font-size: .72rem; color: var(--muted); }
   .stat dd { margin: 0; font-size: .88rem; font-variant-numeric: tabular-nums; }
   .stat dd small { color: var(--muted); }
+  /* ---------- notes ---------- */
+  .notes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+  .notes:empty::before { content: 'No notes yet.'; font-size: .85rem; color: var(--muted); }
+  .notes li { display: flex; gap: 8px; align-items: flex-start; font-size: .9rem; }
+  .notes .note-body { flex: 1; min-width: 0; }
+  .notes .note-meta { display: block; font-size: .72rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .notes .note-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+  .note-del { border: none; background: none; color: var(--muted); cursor: pointer; font-size: .85rem; padding: 2px 4px; flex: none; }
+  .note-del:hover { color: var(--sub); }
+  .note-add { display: flex; gap: 8px; }
+  .note-add input { font-size: .9rem; padding: 8px 10px; }
+  .note-add button { border: none; border-radius: 10px; padding: 0 14px; background: var(--accent); color: #fff; font-weight: 600; cursor: pointer; flex: none; }
+  .stat-notes summary { cursor: pointer; font-size: .82rem; color: var(--muted); }
+  .stat-notes[open] summary { margin-bottom: 8px; }
+  .stat-notes .notes { margin-bottom: 8px; }
+
   .edit-spent { border: none; background: none; color: var(--accent); font-size: .78rem; cursor: pointer; padding: 0 2px; text-decoration: underline; text-underline-offset: 2px; }
 
   .toast {
@@ -282,6 +298,15 @@
       <button id="endBtn" title="Remove it from your timers but keep it in Stats">✓ End timer</button>
       <button id="deleteBtn">🗑 Delete timer</button>
     </div>
+
+    <section class="card" style="margin-top:20px">
+      <h2>Notes <small id="notesFor"></small></h2>
+      <ul class="notes" id="noteList"></ul>
+      <div class="note-add">
+        <input id="noteInput" maxlength="1000" placeholder="Add a note… (e.g. finished chapter 4)">
+        <button id="noteAddBtn">Add</button>
+      </div>
+    </section>
   </div>
   <div class="empty hidden" id="emptyView">No timers yet — make one above.</div>
 
@@ -359,6 +384,7 @@
   const makeTimer = (name, type) => ({
     id: uid(), name, type, base: 0, since: 0, running: false, total: 0, done: false,
     ...STAT_DEFAULTS, createdAt: Date.now(),
+    notes: [],  // [{ at: timestamp, clock: "00:42:10" (timer reading then), text }]
   });
 
   const load = () => {
@@ -372,6 +398,7 @@
         // timers from before stats existed: fill in what we can
         [...state.timers, ...state.trash, ...state.archive].forEach(t => {
           for (const k in STAT_DEFAULTS) if (t[k] === undefined) t[k] = STAT_DEFAULTS[k];
+          if (!Array.isArray(t.notes)) t.notes = [];
           if (t.initial === null && t.type === 'down' && t.total) t.initial = t.total;
           if (t.running && !t.runStart) t.runStart = t.since;
         });
@@ -753,6 +780,43 @@
       </div>`).join('');
   };
 
+  // ----- notes -----
+  const allTimers = () => [...state.timers, ...state.trash, ...state.archive];
+  const openNotes = new Set();  // stats cards whose Notes section is expanded (survives re-render)
+
+  const notesHtml = t => `<ul class="notes">${t.notes.map((n, i) => `
+    <li>
+      <div class="note-body">
+        <span class="note-meta">${fmtDate(n.at)}${n.clock ? ` · timer at ${n.clock}` : ''}</span>
+        <span class="note-text">${esc(n.text)}</span>
+      </div>
+      <button class="note-del" data-i="${i}" title="Delete note">✕</button>
+    </li>`).join('')}</ul>`;
+
+  const addNote = (t, text) => {
+    text = text.trim();
+    if (!t || !text) return false;
+    t.notes.push({ at: Date.now(), clock: fmtClock(valueMs(t), t.type), text });
+    commit();
+    return true;
+  };
+  const deleteNote = (t, i) => {
+    if (!t || !t.notes[i] || !confirm('Delete this note?')) return;
+    t.notes.splice(i, 1);
+    commit();
+  };
+
+  let notesKey = '';
+  const renderNotes = () => {
+    const t = sel();
+    const key = t ? t.id + JSON.stringify(t.notes) : '';
+    if (key === notesKey) return;  // only rebuild when the notes actually change
+    notesKey = key;
+    if (!t) return;
+    $('notesFor').textContent = `— ${t.name}`;
+    $('noteList').outerHTML = notesHtml(t).replace('<ul class="notes">', '<ul class="notes" id="noteList">');
+  };
+
   const renderStats = () => {
     const all = [
       ...state.timers.map(t => [t, 'active', 'Active']),
@@ -782,6 +846,14 @@
           <div><dt>Time spent</dt><dd>${fmtWords(Math.floor(spentMs(t) / 1000))}${t.type === 'up' ? ' <button class="edit-spent" title="Correct time spent">Edit</button>' : ''}</dd></div>
           <div><dt>Times used</dt><dd>${used}<br><small>${plural(t.runs, 'run')} · ${t.adds} added · ${t.subs} subtracted</small></dd></div>
         </dl>
+        <details class="stat-notes"${openNotes.has(t.id) ? ' open' : ''}>
+          <summary>Notes (${t.notes.length})</summary>
+          ${notesHtml(t)}
+          <div class="note-add">
+            <input class="note-in" maxlength="1000" placeholder="Add a note…">
+            <button class="note-add-btn">Add</button>
+          </div>
+        </details>
       </div>`;
     }).join('') || '<p class="note">No timers yet.</p>';
   };
@@ -804,7 +876,7 @@
     renderPreview();
   };
 
-  const render = () => { renderList(); renderSelected(); };
+  const render = () => { renderList(); renderSelected(); renderNotes(); };
   const commit = () => { save(); buildList(); render(); renderTrash(); renderStats(); };
 
   // ----- quick chips: minus row on top, matching plus row underneath -----
@@ -845,8 +917,31 @@
   };
   const clockOf = sec => fmtClock(sec * 1000, 'up');
 
+  // notes: selected timer's panel
+  const addSelectedNote = () => { if (addNote(sel(), $('noteInput').value)) $('noteInput').value = ''; };
+  $('noteAddBtn').onclick = addSelectedNote;
+  $('noteInput').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); addSelectedNote(); } });
+  $('selectedView').addEventListener('click', e => {
+    const del = e.target.closest('#noteList .note-del');
+    if (del) deleteNote(sel(), +del.dataset.i);
+  });
+  // notes: stats cards (works for active, ended and deleted timers)
+  $('statsList').addEventListener('keydown', e => {
+    if (e.key !== 'Enter' || !e.target.matches('.note-in')) return;
+    e.preventDefault();
+    e.target.closest('.stat').querySelector('.note-add-btn').click();
+  });
+  $('statsList').addEventListener('toggle', e => {
+    const id = e.target.closest('.stat').dataset.id;
+    e.target.open ? openNotes.add(id) : openNotes.delete(id);
+  }, true);
+
   $('statsList').addEventListener('click', e => {
     if (e.target.closest('.reopen')) { reopenTimer(e.target.closest('.stat').dataset.id); return; }
+    const card = e.target.closest('.stat');
+    const owner = card && allTimers().find(x => x.id === card.dataset.id);
+    if (e.target.closest('.note-add-btn')) { openNotes.add(owner.id); addNote(owner, card.querySelector('.note-in').value); return; }
+    if (e.target.closest('.note-del')) { deleteNote(owner, +e.target.closest('.note-del').dataset.i); return; }
     if (!e.target.closest('.edit-spent')) return;
     const id = e.target.closest('.stat').dataset.id;
     const t = [...state.timers, ...state.trash, ...state.archive].find(x => x.id === id);
@@ -938,7 +1033,8 @@
     if (checkFinished()) return commit();
     render();
     // live stats (time spent / remaining) once a second, only while something runs
-    if (++ticks % 5 === 0 && state.timers.some(t => t.running)) renderStats();
+    // (skipped while you're typing a note in Stats, so the box isn't wiped)
+    if (++ticks % 5 === 0 && state.timers.some(t => t.running) && !$('statsList').contains(document.activeElement)) renderStats();
   };
 
   load();
