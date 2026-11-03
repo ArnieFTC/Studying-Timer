@@ -190,6 +190,10 @@
   #setBtn, .primary { background: var(--accent); color: #fff; }
   #addBtn { background: color-mix(in srgb, var(--add) 16%, transparent); color: var(--add); }
   #subBtn { background: color-mix(in srgb, var(--sub) 16%, transparent); color: var(--sub); }
+  .change-panel { display: flex; flex-direction: column; gap: 8px; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+  .change-panel p { margin: 0; font-size: .82rem; color: var(--muted); }
+  .change-btns { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; }
+  .change-btns button { border: 1px solid var(--line); background: var(--bg); color: var(--text); border-radius: 8px; padding: 9px 10px; font-size: .88rem; font-weight: 600; cursor: pointer; }
   .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   .ghost { border: 1px solid var(--line); background: none; color: var(--text); border-radius: 10px; padding: 12px 8px; font-size: .95rem; cursor: pointer; }
 
@@ -342,6 +346,15 @@
       <button id="subBtn">− Subtract</button>
     </div>
 
+    <div class="change-panel hidden" id="changePanel">
+      <p id="changeHint"></p>
+      <div class="change-btns">
+        <button id="goalDownBtn">− Lower goal</button>
+        <button id="goalUpBtn">+ Raise goal</button>
+        <button id="goalCancelBtn">Cancel</button>
+      </div>
+    </div>
+
     <div class="chips" id="chips"></div>
   </section>
 
@@ -380,7 +393,7 @@
   const TRASH_DAYS = 30;
 
   const uid = () => Math.random().toString(36).slice(2, 10);
-  const STAT_DEFAULTS = { createdAt: null, deletedAt: null, endedAt: null, initial: null, runs: 0, adds: 0, subs: 0, spent: 0, removed: 0, spentFix: 0, runStart: 0 };
+  const STAT_DEFAULTS = { createdAt: null, deletedAt: null, endedAt: null, initial: null, runs: 0, adds: 0, subs: 0, spent: 0, removed: 0, spentFix: 0, runStart: 0, originalGoal: null };
   const makeTimer = (name, type) => ({
     id: uid(), name, type, base: 0, since: 0, running: false, total: 0, done: false,
     ...STAT_DEFAULTS, createdAt: Date.now(),
@@ -579,6 +592,24 @@
     commit();
   };
 
+  // Change the goal: moves the initial time and time remaining together, so time spent
+  // (initial − remaining) stays the same. Not a use of the timer. Returns false if refused.
+  const changeGoal = (t, sec) => {
+    const ms = sec * 1000;
+    if (!ms || t.initial + ms < 0) return false;
+    rebase(t);
+    if (t.originalGoal === null) t.originalGoal = t.initial;
+    t.initial += ms;
+    t.base += ms;
+    t.total = Math.max(0, t.total + ms);
+    // same zero handling as adjust(): crossing zero while running rings on the next tick
+    if (t.base > 0) t.done = false;
+    else if (!t.running) t.done = true;
+    stopAlarm();
+    commit();
+    return true;
+  };
+
   const adjust = (t, sec) => {
     if (!sec) return;
     rebase(t);
@@ -752,7 +783,9 @@
     // once a countdown is finished, make removing it the obvious next step
     $('endBtn').textContent = t.done ? '✓ Done with it — end timer' : '✓ End timer';
     $('endBtn').classList.toggle('finished', t.done);
-    $('setBtn').textContent = t.type === 'down' ? 'Set' : 'Set total';
+    // a countdown is Set once; after that the button changes its goal instead
+    $('setBtn').textContent = t.type === 'up' ? 'Set total' : t.initial === null ? 'Set' : 'Change';
+    if (t.type === 'up' || t.initial === null) showChange(false);
 
     const running = state.timers.filter(x => x.running);
     const anyDone = state.timers.some(x => x.done);
@@ -841,7 +874,7 @@
           ${t.endedAt
             ? `<div><dt>Ended</dt><dd>${fmtDate(t.endedAt)}</dd></div>`
             : `<div><dt>Deleted</dt><dd>${fmtDate(t.deletedAt)}</dd></div>`}
-          <div><dt>Initial time</dt><dd>${t.initial !== null ? fmtWords(t.initial / 1000) : !t.createdAt ? 'Unknown' : (t.type === 'up' ? '0 sec' : 'Not set')}</dd></div>
+          <div><dt>Initial time</dt><dd>${t.initial !== null ? fmtWords(t.initial / 1000) : !t.createdAt ? 'Unknown' : (t.type === 'up' ? '0 sec' : 'Not set')}${t.originalGoal !== null && t.originalGoal !== t.initial ? `<br><small>changed from ${fmtWords(t.originalGoal / 1000)}</small>` : ''}</dd></div>
           <div><dt>${t.type === 'down' ? 'Time remaining' : 'Current total'}</dt><dd>${fmtWords((t.type === 'down' ? Math.ceil : Math.floor)(valueMs(t) / 1000))}${valueMs(t) <= -1000 ? ' <small>(overtime)</small>' : ''}</dd></div>
           <div><dt>Time spent</dt><dd>${fmtWords(Math.floor(spentMs(t) / 1000))}${t.type === 'up' ? ' <button class="edit-spent" title="Correct time spent">Edit</button>' : ''}</dd></div>
           <div><dt>Times used</dt><dd>${used}<br><small>${plural(t.runs, 'run')} · ${t.adds} added · ${t.subs} subtracted</small></dd></div>
@@ -898,6 +931,7 @@
     if (e.target.closest('.go')) { toggle(t); return; }
     if (e.target.closest('.del')) { deleteTimer(t); return; }
     state.selected = t.id;
+    showChange(false);
     save(); render();
   });
 
@@ -1003,7 +1037,20 @@
     fn(t, sec);
   };
 
-  $('setBtn').onclick = withEntry(setTime);
+  const showChange = on => $('changePanel').classList.toggle('hidden', !on);
+  const goalChange = sign => withEntry((t, sec) => {
+    if (changeGoal(t, sign * sec)) { showChange(false); return; }
+    $('preview').classList.add('err');
+    $('preview').textContent = sec ? `That’s more than the whole goal (${fmtWords(t.initial / 1000)})` : 'Enter a time first';
+  });
+  $('setBtn').onclick = withEntry((t, sec) => {
+    if (t.type === 'up' || t.initial === null) return setTime(t, sec);
+    $('changeHint').textContent = `Goal is ${fmtWords(t.initial / 1000)}. Changing it won’t count as time spent.`;
+    showChange(true);
+  });
+  $('goalDownBtn').onclick = goalChange(-1);
+  $('goalUpBtn').onclick = goalChange(1);
+  $('goalCancelBtn').onclick = () => showChange(false);
   $('addBtn').onclick = withEntry((t, sec) => adjust(t, sec));
   $('subBtn').onclick = withEntry((t, sec) => adjust(t, -sec));
   $('startBtn').onclick = () => { const t = sel(); if (t) toggle(t); };
