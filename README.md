@@ -6,7 +6,7 @@ A timer that works like a normal clock-app timer, plus:
 - **Named timers.** For example, "Biology this week" or "Chem break". Click the name on the big clock to rename it.
 - **Countdown or stopwatch.** A countdown rings at zero. A stopwatch counts up, which is good for tracking total time studied.
 - **No upper limit.** Set 3 hours, 30 hours, whatever.
-- **Add or subtract time instantly**, even while a timer is running.
+- **Add or subtract time instantly**, even while a timer is running. Pick the action first, then enter the amount.
 - **Change a goal:** once a countdown is set, the Change button adds to or subtracts from its goal without affecting time spent.
 - **Two ways to enter time:**
   - **Exact:** hours, minutes, seconds (e.g. `1 hr 13 min 28 sec`)
@@ -32,4 +32,4 @@ Or turn on GitHub Pages (Settings → Pages → Deploy from branch → `main` / 
 ## Keyboard
 
 - **Space:** start or pause the selected timer
-- **Enter** (in a time field): same as pressing the Set or Change button
+- **Enter** (in a time field): confirm the action you picked

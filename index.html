@@ -190,10 +190,11 @@
   #setBtn, .primary { background: var(--accent); color: #fff; }
   #addBtn { background: color-mix(in srgb, var(--add) 16%, transparent); color: var(--add); }
   #subBtn { background: color-mix(in srgb, var(--sub) 16%, transparent); color: var(--sub); }
-  .change-panel { display: flex; flex-direction: column; gap: 8px; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
-  .change-panel p { margin: 0; font-size: .82rem; color: var(--muted); }
   .change-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-  #goalCancelBtn { grid-column: 1 / -1; }
+  .entry-step { display: flex; flex-direction: column; gap: 14px; }
+  #changeHint { margin: 0; font-size: .82rem; color: var(--muted); }
+  #changeHint:empty { display: none; }
+  .actions button.on, .change-btns button.on { box-shadow: 0 0 0 2px var(--text); }
   .change-btns button { border: 1px solid var(--line); background: var(--bg); color: var(--text); border-radius: 8px; padding: 9px 10px; font-size: .88rem; font-weight: 600; cursor: pointer; }
   .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   .ghost { border: 1px solid var(--line); background: none; color: var(--text); border-radius: 10px; padding: 12px 8px; font-size: .95rem; cursor: pointer; }
@@ -317,6 +318,19 @@
 
   <section class="card" id="entryCard">
     <h2>Change time <small id="entryFor"></small></h2>
+
+    <div class="actions">
+      <button id="setBtn">Set</button>
+      <button id="addBtn">+ Add</button>
+      <button id="subBtn">− Subtract</button>
+    </div>
+
+    <div class="change-btns hidden" id="goalPick">
+      <button id="goalUpBtn">+ Add to goal</button>
+      <button id="goalDownBtn">− Subtract from goal</button>
+    </div>
+
+    <div class="entry-step hidden" id="entryStep">
     <div class="seg">
       <button id="modeExact" class="on">Exact (h · m · s)</button>
       <button id="modeDecimal">Decimal</button>
@@ -340,20 +354,12 @@
     </div>
 
     <div id="preview"></div>
-
-    <div class="actions">
-      <button id="setBtn">Set</button>
-      <button id="addBtn">+ Add</button>
-      <button id="subBtn">− Subtract</button>
+    <p id="changeHint"></p>
     </div>
 
-    <div class="change-panel hidden" id="changePanel">
-      <p id="changeHint"></p>
-      <div class="change-btns">
-        <button id="goalUpBtn">+ Add to goal</button>
-        <button id="goalDownBtn">− Subtract from goal</button>
-        <button id="goalCancelBtn">Cancel</button>
-      </div>
+    <div class="row2 hidden" id="actionRow">
+      <button class="ghost" id="actionCancel">Cancel</button>
+      <button class="primary" id="actionConfirm"></button>
     </div>
 
     <div class="chips" id="chips"></div>
@@ -371,7 +377,7 @@
     <p class="note">Deleted timers can be restored for 30 days. Their stats stay above either way.</p>
   </section>
 
-  <p class="hint">Space = start/pause selected · Enter = set · timers keep running in the background and survive refresh</p>
+  <p class="hint">Space = start/pause selected · Enter = confirm · timers keep running in the background and survive refresh</p>
 </main>
 <div class="toast hidden" id="toast"><span id="toastText"></span><button id="toastUndo">Undo</button></div>
 
@@ -786,8 +792,7 @@
     $('endBtn').classList.toggle('finished', t.done);
     // a countdown is Set once; after that the button changes its goal instead
     $('setBtn').textContent = t.type === 'up' ? 'Set total' : t.initial === null ? 'Set' : 'Change';
-    if (t.type === 'up' || t.initial === null) showChange(false);
-    renderChangeHint();
+    renderActionHint();
 
     const running = state.timers.filter(x => x.running);
     const anyDone = state.timers.some(x => x.done);
@@ -900,6 +905,7 @@
     if (sec === null) p.textContent = '';
     else if (Number.isNaN(sec)) p.textContent = 'Enter a non-negative number';
     else p.textContent = `= ${fmtWords(sec)}`;
+    renderActionHint();
   };
 
   const renderMode = () => {
@@ -933,7 +939,7 @@
     if (e.target.closest('.go')) { toggle(t); return; }
     if (e.target.closest('.del')) { deleteTimer(t); return; }
     state.selected = t.id;
-    showChange(false);
+    pickAction(null);
     save(); render();
   });
 
@@ -1039,42 +1045,81 @@
     fn(t, sec);
   };
 
-  const showChange = on => $('changePanel').classList.toggle('hidden', !on);
-  // Spells out the result of adding or subtracting, so there's no math to do.
-  const renderChangeHint = () => {
+  // Time entry: pick an action first, then enter the amount, then confirm.
+  // 'change' is the step between Change and choosing which way to move the goal.
+  const ACTIONS = {
+    set: { label: 'Set to', run: setTime },
+    add: { label: 'Add', run: (t, sec) => adjust(t, sec) },
+    sub: { label: 'Subtract', run: (t, sec) => adjust(t, -sec) },
+    goalUp: { label: 'Add to goal', run: (t, sec) => changeGoal(t, sec) },
+    goalDown: { label: 'Subtract from goal', run: (t, sec) => changeGoal(t, -sec) },
+  };
+  let action = null, actionFor = null;
+  const isGoalAction = () => ['change', 'goalUp', 'goalDown'].includes(action);
+
+  const pickAction = next => {
+    action = next;
+    actionFor = state.selected;
+    $('setBtn').classList.toggle('on', action === 'set' || isGoalAction());
+    $('addBtn').classList.toggle('on', action === 'add');
+    $('subBtn').classList.toggle('on', action === 'sub');
+    $('goalUpBtn').classList.toggle('on', action === 'goalUp');
+    $('goalDownBtn').classList.toggle('on', action === 'goalDown');
+    $('goalPick').classList.toggle('hidden', !isGoalAction());
+    $('entryStep').classList.toggle('hidden', !ACTIONS[action]);
+    $('actionRow').classList.toggle('hidden', !action);
+    $('actionConfirm').classList.toggle('hidden', !ACTIONS[action]);
+    $('actionRow').style.gridTemplateColumns = ACTIONS[action] ? '' : '1fr';
+    ['inH', 'inM', 'inS', 'inDec'].forEach(id => { $(id).value = ''; });
+    renderPreview();
+    if (ACTIONS[action]) $(state.mode === 'exact' ? 'inH' : 'inDec').focus();
+  };
+  // Pressing the action that's already picked backs out of it.
+  const toggleAction = next => pickAction(action === next ? null : next);
+
+  // Names the amount on the confirm button and spells out a goal change, so there's no math to do.
+  const renderActionHint = () => {
+    // the selected timer changed (e.g. this one was deleted): don't carry the action over
+    if (action && actionFor !== state.selected) return pickAction(null);
     const t = sel();
-    if (!t || $('changePanel').classList.contains('hidden')) return;
+    if (!t || !ACTIONS[action]) { $('changeHint').textContent = ''; return; }
+    const sec = readEntry();
+    const ok = sec !== null && !Number.isNaN(sec);
+    $('actionConfirm').textContent = ok ? `${ACTIONS[action].label} ${fmtWords(sec)}` : ACTIONS[action].label;
+    if (!isGoalAction()) { $('changeHint').textContent = ''; return; }
     const words = ms => fmtWords(Math.ceil(ms / 1000));
     const left = valueMs(t);
     let text = `Goal: ${words(t.initial)}, ${words(left)} left. Time spent stays ${fmtWords(Math.floor(spentMs(t) / 1000))}.`;
-    const sec = readEntry();
-    if (sec) {
-      const ms = sec * 1000;
-      text += ` Add gives ${words(t.initial + ms)} with ${words(left + ms)} left.`;
-      text += t.initial - ms < 0 ? ' Subtract is more than the whole goal.'
-        : ` Subtract gives ${words(t.initial - ms)} with ${words(left - ms)} left.`;
-    } else {
-      text += ' Type an amount above, then add or subtract it.';
+    if (ok && sec) {
+      const ms = (action === 'goalUp' ? 1 : -1) * sec * 1000;
+      text += t.initial + ms < 0 ? ' That’s more than the whole goal.'
+        : ` This gives ${words(t.initial + ms)} with ${words(left + ms)} left.`;
     }
     $('changeHint').textContent = text;
   };
-  const goalChange = sign => withEntry((t, sec) => {
-    if (changeGoal(t, sign * sec)) { showChange(false); return; }
-    $('preview').classList.add('err');
-    $('preview').textContent = sec ? `That’s more than the whole goal (${fmtWords(t.initial / 1000)})` : 'Enter a time first';
-  });
-  const setEntry = withEntry(setTime);
+
   $('setBtn').onclick = () => {
     const t = sel(); if (!t) return;
-    if (t.type === 'up' || t.initial === null) return setEntry();
-    showChange(true);  // no amount needed yet: it's picked in the panel
-    renderChangeHint();
+    toggleAction(t.type === 'up' || t.initial === null ? 'set' : 'change');
   };
-  $('goalDownBtn').onclick = goalChange(-1);
-  $('goalUpBtn').onclick = goalChange(1);
-  $('goalCancelBtn').onclick = () => showChange(false);
-  $('addBtn').onclick = withEntry((t, sec) => adjust(t, sec));
-  $('subBtn').onclick = withEntry((t, sec) => adjust(t, -sec));
+  $('addBtn').onclick = () => toggleAction('add');
+  $('subBtn').onclick = () => toggleAction('sub');
+  $('goalUpBtn').onclick = () => toggleAction('goalUp');
+  $('goalDownBtn').onclick = () => toggleAction('goalDown');
+  $('actionCancel').onclick = () => pickAction(null);
+  $('actionConfirm').onclick = withEntry((t, sec) => {
+    if (!sec && action !== 'set') {
+      $('preview').classList.add('err');
+      $('preview').textContent = 'Enter a time first';
+      return;
+    }
+    if (ACTIONS[action].run(t, sec) === false) {
+      $('preview').classList.add('err');
+      $('preview').textContent = `That’s more than the whole goal (${fmtWords(t.initial / 1000)})`;
+      return;
+    }
+    pickAction(null);
+  });
   $('startBtn').onclick = () => { const t = sel(); if (t) toggle(t); };
   $('resetBtn').onclick = () => { const t = sel(); if (t) reset(t); };
   $('deleteBtn').onclick = () => { const t = sel(); if (t) deleteTimer(t); };
@@ -1086,7 +1131,7 @@
   document.addEventListener('keydown', e => {
     const typing = e.target.matches('input, select');
     if (e.code === 'Space' && !typing) { e.preventDefault(); $('startBtn').click(); }
-    if (e.key === 'Enter' && typing && ['inH', 'inM', 'inS', 'inDec'].includes(e.target.id)) { e.preventDefault(); $('setBtn').click(); }
+    if (e.key === 'Enter' && typing && ['inH', 'inM', 'inS', 'inDec'].includes(e.target.id)) { e.preventDefault(); $('actionConfirm').click(); }
   });
 
   // ----- tick -----
