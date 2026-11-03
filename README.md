@@ -7,7 +7,7 @@ A timer that works like a normal clock-app timer, plus:
 - **Countdown or stopwatch.** A countdown rings at zero. A stopwatch counts up, which is good for tracking total time studied.
 - **No upper limit.** Set 3 hours, 30 hours, whatever.
 - **Add or subtract time instantly**, even while a timer is running.
-- **Change a goal:** once a countdown is set, the Change button raises or lowers its goal without affecting time spent.
+- **Change a goal:** once a countdown is set, the Change button adds to or subtracts from its goal without affecting time spent.
 - **Two ways to enter time:**
   - **Exact:** hours, minutes, seconds (e.g. `1 hr 13 min 28 sec`)
   - **Decimal:** e.g. `1.11` hours is converted to `1 hr 6 min 36 sec` (minutes and seconds work too)

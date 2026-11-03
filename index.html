@@ -192,7 +192,8 @@
   #subBtn { background: color-mix(in srgb, var(--sub) 16%, transparent); color: var(--sub); }
   .change-panel { display: flex; flex-direction: column; gap: 8px; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
   .change-panel p { margin: 0; font-size: .82rem; color: var(--muted); }
-  .change-btns { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; }
+  .change-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  #goalCancelBtn { grid-column: 1 / -1; }
   .change-btns button { border: 1px solid var(--line); background: var(--bg); color: var(--text); border-radius: 8px; padding: 9px 10px; font-size: .88rem; font-weight: 600; cursor: pointer; }
   .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   .ghost { border: 1px solid var(--line); background: none; color: var(--text); border-radius: 10px; padding: 12px 8px; font-size: .95rem; cursor: pointer; }
@@ -349,8 +350,8 @@
     <div class="change-panel hidden" id="changePanel">
       <p id="changeHint"></p>
       <div class="change-btns">
-        <button id="goalDownBtn">− Lower goal</button>
-        <button id="goalUpBtn">+ Raise goal</button>
+        <button id="goalUpBtn">+ Add to goal</button>
+        <button id="goalDownBtn">− Subtract from goal</button>
         <button id="goalCancelBtn">Cancel</button>
       </div>
     </div>
@@ -786,6 +787,7 @@
     // a countdown is Set once; after that the button changes its goal instead
     $('setBtn').textContent = t.type === 'up' ? 'Set total' : t.initial === null ? 'Set' : 'Change';
     if (t.type === 'up' || t.initial === null) showChange(false);
+    renderChangeHint();
 
     const running = state.timers.filter(x => x.running);
     const anyDone = state.timers.some(x => x.done);
@@ -1038,16 +1040,36 @@
   };
 
   const showChange = on => $('changePanel').classList.toggle('hidden', !on);
+  // Spells out the result of adding or subtracting, so there's no math to do.
+  const renderChangeHint = () => {
+    const t = sel();
+    if (!t || $('changePanel').classList.contains('hidden')) return;
+    const words = ms => fmtWords(Math.ceil(ms / 1000));
+    const left = valueMs(t);
+    let text = `Goal: ${words(t.initial)}, ${words(left)} left. Time spent stays ${fmtWords(Math.floor(spentMs(t) / 1000))}.`;
+    const sec = readEntry();
+    if (sec) {
+      const ms = sec * 1000;
+      text += ` Add gives ${words(t.initial + ms)} with ${words(left + ms)} left.`;
+      text += t.initial - ms < 0 ? ' Subtract is more than the whole goal.'
+        : ` Subtract gives ${words(t.initial - ms)} with ${words(left - ms)} left.`;
+    } else {
+      text += ' Type an amount above, then add or subtract it.';
+    }
+    $('changeHint').textContent = text;
+  };
   const goalChange = sign => withEntry((t, sec) => {
     if (changeGoal(t, sign * sec)) { showChange(false); return; }
     $('preview').classList.add('err');
     $('preview').textContent = sec ? `That’s more than the whole goal (${fmtWords(t.initial / 1000)})` : 'Enter a time first';
   });
-  $('setBtn').onclick = withEntry((t, sec) => {
-    if (t.type === 'up' || t.initial === null) return setTime(t, sec);
-    $('changeHint').textContent = `Goal is ${fmtWords(t.initial / 1000)}. Changing it won’t count as time spent.`;
-    showChange(true);
-  });
+  const setEntry = withEntry(setTime);
+  $('setBtn').onclick = () => {
+    const t = sel(); if (!t) return;
+    if (t.type === 'up' || t.initial === null) return setEntry();
+    showChange(true);  // no amount needed yet: it's picked in the panel
+    renderChangeHint();
+  };
   $('goalDownBtn').onclick = goalChange(-1);
   $('goalUpBtn').onclick = goalChange(1);
   $('goalCancelBtn').onclick = () => showChange(false);
